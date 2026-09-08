@@ -26,6 +26,20 @@ mistakes that were actually made here, not hypotheticals.
 | Docker Compose | v5.0.2 | The `compose` plugin, not the old `docker-compose` binary |
 | Disk | ~4 GB | 1.6 GB venv, plus images if you use Docker |
 | AWS account | — | **Not required.** `ENV=local` runs everything from disk |
+| AWS CLI v2 | 2.36.40 | Only for the IAM scripts. No sudo needed — see below |
+
+The AWS CLI installs user-local, which matters on a machine without
+passwordless sudo:
+
+```bash
+curl -sS https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+python -c "import zipfile; zipfile.ZipFile('/tmp/awscliv2.zip').extractall('/tmp')"
+chmod +x /tmp/aws/install /tmp/aws/dist/aws
+/tmp/aws/install --install-dir ~/.local/aws-cli --bin-dir ~/.local/bin
+```
+
+`unzip` is not present on this image and `python -c` does the same job.
+Note that the CLI **does not read `.env`** — see `ROADMAP.md` §B0.
 
 The raw CSVs are **not** in the repository (they are git-ignored). Place them at:
 

@@ -92,6 +92,12 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: gha-publish-${{ github.run_id }}
           aws-region: ${{ vars.AWS_REGION }}
+          # The ECR registry host is <account>.dkr.ecr.<region>.amazonaws.com,
+          # so the account id would otherwise appear in the build log — and on
+          # a public repository those logs are public. Set explicitly rather
+          # than relying on the action's default, which has changed between
+          # major versions.
+          mask-aws-account-id: true
 
       - id: ecr
         uses: aws-actions/amazon-ecr-login@v2

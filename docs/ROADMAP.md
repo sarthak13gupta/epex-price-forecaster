@@ -43,17 +43,110 @@ never run anywhere except this machine.** That gap is the top of this list.
 
 ## Blocked on you, not on effort
 
-These four cannot be done by anyone but the account owner. Each is minutes of
-work, and everything in the next section waits on them.
+These cannot be done by anyone but the account owner. Each is minutes of work,
+and everything in the next section waits on them.
 
 | # | Action | Why it needs you |
 |---|---|---|
-| B1 | `sudo ./infra/host/install-docker-engine.sh` | No passwordless sudo here. Turn off Docker Desktop's WSL integration first |
-| B2 | `REPO=sarthak13gupta/epex-price-forecaster ./infra/iam/apply-github-oidc.sh` | Creates an IAM role and OIDC provider. Your pipeline user is S3-scoped and gets `AccessDenied` on all IAM calls — this needs your admin identity |
-| B3 | Set repo variables `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REPOSITORY` | Repository settings. B2 prints the exact values |
-| B4 | `POLICY=inference-only ./infra/iam/apply.sh` | Same reason as B2: creating the EC2 instance role is a deliberate admin action |
+| B0 | Configure an **admin** AWS profile | The AWS CLI is installed; what is missing is an identity that can manage IAM |
+| B1 | `sudo ./infra/host/install-docker-engine.sh` | No passwordless sudo here |
+| B2 | `./infra/iam/apply-github-oidc.sh` | Creates an IAM role and OIDC provider |
+| B3 | Set three repository variables | Repository settings; B2 prints the values |
+| B4 | `POLICY=inference-only ./infra/iam/apply.sh` | Creates the EC2 instance role |
 
-B1 is independent. B2 → B3 → the publish workflow → B4 → deployment is a chain.
+B1 is independent and can be done any time. The rest is a chain:
+**B0 → B2 → B3 → publish → B4 → deploy.**
+
+### B0. An admin AWS profile
+
+The AWS CLI **does not read `.env`.** It has its own credential chain —
+environment variables, then `~/.aws/credentials`, then an instance role — so
+the project's `.env` is invisible to it.
+
+More importantly, B2 and B4 need an **admin** identity. The project's
+`quantitative-pipeline-user` is deliberately scoped to S3 only and gets
+`AccessDenied` on every IAM call. Both scripts now detect this and refuse up
+front rather than failing halfway through a partial change.
+
+```bash
+aws configure --profile admin        # admin access key, secret, region
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+export AWS_PROFILE=admin
+aws sts get-caller-identity          # confirm it is NOT the pipeline user
+```
+
+The `unset` matters: **environment variables beat `AWS_PROFILE`**, so leftover
+pipeline keys would silently override the profile.
+
+Verify, then continue:
+
+```bash
+aws iam list-roles --max-items 1 >/dev/null && echo "admin OK"
+```
+
+### B1. A native Docker engine
+
+Independent of the AWS chain. Currently `/usr/bin/docker` is a symlink into
+`/mnt/wsl/docker-desktop/cli-tools/`, so the CLI *disappears* when Desktop
+stops rather than failing to connect.
+
+1. Docker Desktop → Settings → Resources → WSL Integration → **turn off** for
+   this distro. Two engines competing for `/var/run/docker.sock` is worse than
+   either alone.
+2. `sudo ./infra/host/install-docker-engine.sh`
+3. `newgrp docker` (or `wsl --shutdown` from PowerShell, then reopen)
+4. `ls -la $(which docker)` — expect a **regular file**, not a symlink.
+
+The script checks systemd is PID 1 first, because `systemctl enable --now
+docker` otherwise fails cryptically and aborts mid-install.
+
+### B2. The OIDC role and ECR repository
+
+```bash
+REPO=sarthak13gupta/epex-price-forecaster ./infra/iam/apply-github-oidc.sh
+```
+
+Creates the OIDC identity provider, the ECR repository (scan-on-push enabled)
+and the push role, then prints the three values for B3. Idempotent — re-running
+updates the policies rather than failing.
+
+The region comes from `.env` and is **not** guessed: creating the ECR
+repository in the wrong region surfaces much later as an image the instance
+cannot find.
+
+### B3. Three repository variables
+
+At `https://github.com/sarthak13gupta/epex-price-forecaster/settings/variables/actions`,
+using the values B2 printed:
+
+| Variable | Value |
+|---|---|
+| `AWS_ROLE_ARN` | `arn:aws:iam::<account>:role/github-actions-ecr-push` |
+| `AWS_REGION` | your region |
+| `ECR_REPOSITORY` | `epex-forecaster` |
+
+**Variables, not secrets** — a role ARN is not a credential, and keeping it
+visible makes the wiring auditable. Until all three exist, `publish.yml` skips
+with an explanation instead of failing.
+
+Then publish:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+### B4. The EC2 instance role
+
+```bash
+POLICY=inference-only ./infra/iam/apply.sh
+```
+
+`inference-only` reads the model artifact and writes forecasts, nothing else.
+`POLICY=forecaster` grants the full pipeline; use it only when training moves
+onto the instance.
+
+Attach `epex-forecaster-ec2-profile` **at instance launch** — attaching later
+works, but the running container caches the credential chain result.
 
 ## Next: finish the deployment story
 
