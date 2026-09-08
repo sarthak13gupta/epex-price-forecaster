@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-label="The model's interaction with S3. Four prefixes hold raw data, processed data, MLflow artifacts and the date-partitioned forecast archive. The training container reads raw data and writes artifacts plus forecasts; the FastAPI container reads the model bundle once at startup; the forecast archive is later joined to settled prices to produce a live accuracy record.">
+  <defs>
+    <marker id="s3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#131B1E"></polygon>
+    </marker>
+    <marker id="s3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#0E5D6E"></polygon>
+    </marker>
+    <marker id="s3w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#A9541F"></polygon>
+    </marker>
+  </defs>
+
+  <!-- ============ S3 bucket ============ -->
+  <rect x="330" y="60" width="300" height="410" rx="5" fill="none" stroke="#131B1E" stroke-width="2"></rect>
+  <text x="480" y="40" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="600" fill="#131B1E">S3 bucket</text>
+  <text x="480" y="54" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">versioning ON · AES256 · public access blocked</text>
+
+  <rect x="350" y="80" width="260" height="66" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+  <text x="362" y="99" font-family="DejaVu Sans Mono, monospace" font-size="10.5" font-weight="600" fill="#131B1E">raw/epex/dt=YYYY-MM-DD/</text>
+  <text x="362" y="115" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.75">the incoming feed, append-only</text>
+  <text x="362" y="130" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.75">a bad file damages ONE partition</text>
+  <text x="362" y="142" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">✓ 2 CSVs uploaded, read verified</text>
+
+  <rect x="350" y="160" width="260" height="46" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+  <text x="362" y="179" font-family="DejaVu Sans Mono, monospace" font-size="10.5" font-weight="600" fill="#131B1E">processed/clean/</text>
+  <text x="362" y="195" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.75">cleaned parquet cache (optional)</text>
+
+  <rect x="350" y="220" width="260" height="80" rx="3" fill="none" stroke="#0E5D6E" stroke-width="1.8"></rect>
+  <text x="362" y="239" font-family="DejaVu Sans Mono, monospace" font-size="10.5" font-weight="600" fill="#0E5D6E">mlflow-artifacts/</text>
+  <text x="362" y="255" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#0E5D6E" opacity="0.85">the pyfunc model bundle (~808 KB)</text>
+  <text x="362" y="269" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#0E5D6E" opacity="0.85">SHAP plots · leaderboard · fold metrics</text>
+  <text x="362" y="285" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E" opacity="0.8">read ONCE at API startup</text>
+
+  <rect x="350" y="314" width="260" height="86" rx="3" fill="none" stroke="#A9541F" stroke-width="1.8"></rect>
+  <text x="362" y="333" font-family="DejaVu Sans Mono, monospace" font-size="10.5" font-weight="600" fill="#A9541F">forecasts/dt=YYYY-MM-DD/</text>
+  <text x="362" y="349" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#A9541F" opacity="0.9">every forecast, keyed by VINTAGE</text>
+  <text x="362" y="363" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#A9541F" opacity="0.9">the date it was MADE, not covered</text>
+  <text x="362" y="379" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">✓ write round-trip verified</text>
+  <text x="362" y="393" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F" opacity="0.85">CANNOT be reconstructed later</text>
+
+  <text x="362" y="428" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#131B1E" opacity="0.6">lifecycle → Standard-IA at 90d, Glacier at 1y</text>
+  <text x="362" y="444" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#131B1E" opacity="0.6">prefixes from paths.s3_prefixes in config.yaml</text>
+  <text x="362" y="460" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#8B9C9F">no real folders: these are key prefixes</text>
+
+  <!-- ============ left: producers ============ -->
+  <rect x="16" y="88" width="230" height="76" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5" stroke-dasharray="5 3"></rect>
+  <text x="131" y="112" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="600" fill="#131B1E">data feed</text>
+  <text x="131" y="129" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.75">manual upload today;</text>
+  <text x="131" y="143" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.75">a daily job in production</text>
+  <text x="131" y="157" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.6">put_object / upload_file</text>
+  <line x1="248" y1="120" x2="346" y2="113" stroke="#A9541F" stroke-width="1.8" marker-end="url(#s3w)"></line>
+
+  <rect x="16" y="212" width="230" height="104" rx="3" fill="none" stroke="#A9541F" stroke-width="2"></rect>
+  <text x="131" y="234" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="600" fill="#A9541F">training container</text>
+  <text x="131" y="250" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#A9541F" opacity="0.85">train_pipeline.py</text>
+  <text x="131" y="266" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#A9541F" opacity="0.9">scheduled · runs to completion</text>
+  <text x="131" y="282" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">reads raw/</text>
+  <text x="131" y="296" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">writes artifacts/ + forecasts/</text>
+  <text x="131" y="310" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F" opacity="0.8">via S3Store (stage 6)</text>
+
+  <path d="M 248 240 C 300 240 310 140 346 128" fill="none" stroke="#0E5D6E" stroke-width="1.8" marker-end="url(#s3r)"></path>
+  <line x1="248" y1="272" x2="346" y2="262" stroke="#A9541F" stroke-width="1.8" marker-end="url(#s3w)"></line>
+  <path d="M 248 300 C 300 320 312 344 346 352" fill="none" stroke="#A9541F" stroke-width="1.8" marker-end="url(#s3w)"></path>
+
+  <!-- ============ right: consumers ============ -->
+  <rect x="714" y="212" width="230" height="90" rx="3" fill="none" stroke="#0E5D6E" stroke-width="2"></rect>
+  <text x="829" y="234" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="600" fill="#0E5D6E">FastAPI container</text>
+  <text x="829" y="250" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#0E5D6E" opacity="0.85">api/model_loader.py</text>
+  <text x="829" y="268" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#0E5D6E" opacity="0.9">loads the bundle ONCE at boot</text>
+  <text x="829" y="284" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#0E5D6E" opacity="0.9">then serves from RAM</text>
+  <text x="829" y="298" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E" opacity="0.75">requests touch S3 zero times</text>
+  <line x1="634" y1="258" x2="710" y2="255" stroke="#0E5D6E" stroke-width="2" marker-end="url(#s3r)"></line>
+  <text x="672" y="248" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E">read 1×</text>
+
+  <rect x="714" y="330" width="230" height="98" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5" stroke-dasharray="5 3"></rect>
+  <text x="829" y="352" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="600" fill="#131B1E">accuracy tracking</text>
+  <text x="829" y="368" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#131B1E" opacity="0.8">load_forecast_archive()</text>
+  <text x="829" y="385" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.8">join vintages to settled prices</text>
+  <text x="829" y="399" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.8">rolling realised MAE</text>
+  <text x="829" y="415" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">not built yet — the archive enables it</text>
+  <line x1="634" y1="360" x2="710" y2="366" stroke="#0E5D6E" stroke-width="1.8" marker-end="url(#s3r)"></line>
+
+  <!-- legend -->
+  <line x1="16" y1="486" x2="46" y2="486" stroke="#0E5D6E" stroke-width="2" marker-end="url(#s3r)"></line>
+  <text x="54" y="490" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E">read from S3</text>
+  <line x1="176" y1="486" x2="206" y2="486" stroke="#A9541F" stroke-width="2" marker-end="url(#s3w)"></line>
+  <text x="214" y="490" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E">write to S3</text>
+  <text x="330" y="490" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#0E5D6E">✓ = verified against the live bucket</text>
+  <text x="330" y="508" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#8B9C9F">dashed = designed, not yet built</text>
+</svg>

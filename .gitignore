@@ -1,0 +1,60 @@
+# ==============================================================================
+# Secrets — never commit
+# ==============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+credentials
+
+# ==============================================================================
+# Python
+# ==============================================================================
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+# Data — raw and derived artifacts stay out of git
+# ==============================================================================
+data/processed/
+data/raw/*.csv
+!data/raw/.gitkeep
+
+# ==============================================================================
+# ML artifacts, experiment tracking, results
+# ==============================================================================
+mlruns/
+mlartifacts/
+artifacts/
+results/
+optuna*.db
+
+# The MLflow tracking store. Local state, and it bakes ABSOLUTE host paths into
+# the experiments table — sharing it would hand someone else paths that do not
+# exist on their machine (this is CORRECTIONS.md finding 13).
+mlflow.db
+mlflow.db-journal
+mlflow-ci.db
+
+# Backups and scratch
+*.bak
+*.bak.*
+*.orig
+
+# ==============================================================================
+# Notebooks
+# ==============================================================================
+.ipynb_checkpoints/
+
+# ==============================================================================
+# Editors / OS
+# ==============================================================================
+.vscode/
+.idea/
+.DS_Store

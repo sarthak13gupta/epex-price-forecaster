@@ -1,0 +1,14 @@
+# ==============================================================================
+# TEST TOOLCHAIN ONLY — no application dependencies.
+#
+# Deliberately standalone (no `-r`) so CI can layer it on ANY service set and
+# prove that set is sufficient:
+#     pip install -r requirements-api.txt -r requirements-test.txt
+# runs the suite against the slim serving environment, which is the claim the
+# requirements split makes. requirements-dev.txt layers it on the full set.
+#
+# httpx2, not httpx: starlette 1.6 deprecates the httpx-backed TestClient and
+# warns on import. httpx2 is the supported transport.
+# ==============================================================================
+pytest==8.4.2
+httpx2==2.12.0

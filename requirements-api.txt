@@ -1,0 +1,10 @@
+# ==============================================================================
+# API — the inference service. Verified against the real import graph: loading
+# the bundle and serving a forecast pulls in NO training or UI package.
+# ==============================================================================
+-r requirements-base.txt
+
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.4
+python-multipart==0.0.32

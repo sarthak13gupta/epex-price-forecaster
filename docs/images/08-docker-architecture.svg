@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 620" role="img" aria-label="Docker architecture. One Dockerfile builds one image through cached layers. That single image runs as four different containers chosen by command: api, ui, mlflow and train. Two are always on, two are profile-gated. Ports bind to loopback only, host volumes supply mutable state, and S3 holds the durable artifacts.">
+  <defs>
+    <marker id="da" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#131B1E"></polygon>
+    </marker>
+    <marker id="dt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#0E5D6E"></polygon>
+    </marker>
+    <marker id="dw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#A9541F"></polygon>
+    </marker>
+    <marker id="df" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#8B9C9F"></polygon>
+    </marker>
+  </defs>
+
+  <!-- ================= BUILD ================= -->
+  <text x="16" y="26" font-family="DejaVu Sans Mono, monospace" font-size="10" fill="#0E5D6E" letter-spacing="1.4">BUILD — once, cached by layer</text>
+
+  <rect x="16" y="38" width="150" height="150" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="91" y="58" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">Dockerfile</text>
+  <text x="28" y="76" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.8">FROM python:3.12-slim</text>
+  <text x="28" y="90" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.8">ENV PYTHONUNBUFFERED=1</text>
+  <text x="28" y="104" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.8">apt: libgomp1, curl</text>
+  <text x="28" y="118" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">COPY requirements.txt</text>
+  <text x="28" y="132" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">pip install + slim</text>
+  <text x="28" y="146" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">COPY configs/ src/</text>
+  <text x="28" y="160" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.8">USER app  (non-root)</text>
+  <text x="28" y="176" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#8B9C9F">CMD uvicorn ... :8000</text>
+
+  <text x="176" y="96" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#A9541F">slow layer</text>
+  <text x="176" y="108" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#A9541F">~85 s, cached</text>
+  <text x="176" y="150" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E">fast layer</text>
+  <text x="176" y="162" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E">rebuilt on edit</text>
+
+  <rect x="262" y="76" width="150" height="76" rx="3" fill="none" stroke="#0E5D6E" stroke-width="2.2"></rect>
+  <text x="337" y="98" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#0E5D6E">ONE image</text>
+  <text x="337" y="114" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#0E5D6E">epex-forecaster:latest</text>
+  <text x="337" y="130" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#0E5D6E">1.64 GB</text>
+  <text x="337" y="145" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E" opacity="0.75">immutable, versionable</text>
+  <line x1="168" y1="113" x2="258" y2="113" stroke="#131B1E" stroke-width="1.5" marker-end="url(#da)"></line>
+  <text x="213" y="128" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#131B1E">build</text>
+
+  <!-- ================= RUN ================= -->
+  <text x="16" y="214" font-family="DejaVu Sans Mono, monospace" font-size="10" fill="#0E5D6E" letter-spacing="1.4">RUN — one image, four roles</text>
+
+  <path d="M 337 154 V 228 H 130 V 244" fill="none" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#dt)"></path>
+  <path d="M 337 228 H 330 V 244" fill="none" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#dt)"></path>
+  <path d="M 337 228 H 530 V 244" fill="none" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#dt)"></path>
+  <path d="M 337 228 H 730 V 244" fill="none" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#dt)"></path>
+
+  <!-- api -->
+  <rect x="40" y="248" width="180" height="110" rx="3" fill="none" stroke="#0E5D6E" stroke-width="2.2"></rect>
+  <text x="130" y="268" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#0E5D6E">api</text>
+  <text x="130" y="283" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E" opacity="0.85">uvicorn src.api.main:app</text>
+  <text x="130" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#0E5D6E">127.0.0.1:8000</text>
+  <text x="130" y="315" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9" fill="#0E5D6E" opacity="0.85">always on</text>
+  <text x="130" y="330" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E" opacity="0.8">restart: unless-stopped</text>
+  <text x="130" y="346" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#2C6E4F">healthcheck → /health</text>
+
+  <!-- ui -->
+  <rect x="240" y="248" width="180" height="110" rx="3" fill="none" stroke="#8B9C9F" stroke-width="1.6" stroke-dasharray="5 3"></rect>
+  <text x="330" y="268" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">ui</text>
+  <text x="330" y="283" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#131B1E" opacity="0.8">streamlit run src/ui/app.py</text>
+  <text x="330" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#131B1E" opacity="0.85">127.0.0.1:8501</text>
+  <text x="330" y="315" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#A9541F">profile: ui</text>
+  <text x="330" y="331" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="8.5" fill="#A9541F" opacity="0.9">gated — not written yet</text>
+  <text x="330" y="347" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#131B1E" opacity="0.7">holds no model</text>
+
+  <!-- mlflow -->
+  <rect x="440" y="248" width="180" height="110" rx="3" fill="none" stroke="#131B1E" stroke-width="1.6"></rect>
+  <text x="530" y="268" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">mlflow</text>
+  <text x="530" y="283" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#131B1E" opacity="0.8">mlflow ui --port 5000</text>
+  <text x="530" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#131B1E" opacity="0.85">127.0.0.1:5000</text>
+  <text x="530" y="315" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9" fill="#131B1E" opacity="0.85">always on</text>
+  <text x="530" y="332" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#98302E">never expose publicly</text>
+  <text x="530" y="346" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#98302E" opacity="0.85">— it has no auth</text>
+
+  <!-- train -->
+  <rect x="640" y="248" width="180" height="110" rx="3" fill="none" stroke="#A9541F" stroke-width="1.8" stroke-dasharray="5 3"></rect>
+  <text x="730" y="268" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#A9541F">train</text>
+  <text x="730" y="283" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#A9541F" opacity="0.9">python -m ...train_pipeline</text>
+  <text x="730" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#A9541F">no ports</text>
+  <text x="730" y="315" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#A9541F">profile: train</text>
+  <text x="730" y="331" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="8.5" fill="#A9541F" opacity="0.9">runs to completion, exits</text>
+  <text x="730" y="347" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#98302E">restart: "no"</text>
+
+  <!-- internal network -->
+  <line x1="240" y1="292" x2="224" y2="292" stroke="#131B1E" stroke-width="1.4" marker-end="url(#da)"></line>
+  <text x="232" y="284" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="7.5" fill="#131B1E">http</text>
+  <text x="330" y="382" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.75">docker network: services reach each other by service name</text>
+
+  <!-- ================= STATE ================= -->
+  <text x="16" y="424" font-family="DejaVu Sans Mono, monospace" font-size="10" fill="#0E5D6E" letter-spacing="1.4">STATE — never inside the image</text>
+
+  <rect x="40" y="438" width="330" height="112" rx="3" fill="none" stroke="#A9541F" stroke-width="1.6"></rect>
+  <text x="205" y="458" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#A9541F">host volumes (mutable)</text>
+  <text x="54" y="476" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">./mlflow.db      → /app/mlflow.db</text>
+  <text x="54" y="490" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">./mlartifacts    → $HOST_PROJECT_DIR/mlartifacts</text>
+  <text x="54" y="504" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">./results        → /app/results</text>
+  <text x="54" y="518" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">./data           → /app/data   (train only)</text>
+  <text x="54" y="536" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#131B1E" opacity="0.7">user: $HOST_UID — MLflow writes into the artifact dir</text>
+
+  <rect x="440" y="438" width="330" height="112" rx="3" fill="none" stroke="#0E5D6E" stroke-width="1.8"></rect>
+  <text x="605" y="458" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#0E5D6E">S3 (durable, ENV=production)</text>
+  <text x="454" y="476" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">raw/epex/{train,predict}/</text>
+  <text x="454" y="490" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">mlflow-artifacts/</text>
+  <text x="454" y="504" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">forecasts/dt=YYYY-MM-DD/</text>
+  <text x="454" y="522" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E" opacity="0.8">credentials via IAM instance role — no keys in the image</text>
+  <text x="454" y="538" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#2C6E4F">an s3:// artifact root removes the uid + path workarounds</text>
+
+  <path d="M 130 362 V 400 H 205 V 434" fill="none" stroke="#A9541F" stroke-width="1.5" marker-end="url(#dw)"></path>
+  <path d="M 730 362 V 400 H 605 V 434" fill="none" stroke="#0E5D6E" stroke-width="1.5" marker-end="url(#dt)"></path>
+  <path d="M 530 362 V 400 H 300 V 434" fill="none" stroke="#A9541F" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#dw)"></path>
+
+  <!-- legend -->
+  <text x="16" y="580" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#131B1E" opacity="0.8">The rule: the image is code. Everything mutable is a volume or S3, so any container is disposable.</text>
+  <text x="16" y="598" font-family="DejaVu Sans Mono, monospace" font-size="9" fill="#8B9C9F">dashed box = profile-gated or not yet built · loopback ports = only Nginx faces the internet on EC2</text>
+</svg>

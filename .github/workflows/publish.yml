@@ -1,0 +1,121 @@
+# ==============================================================================
+# PUBLISH — builds the service images and pushes them to Amazon ECR, which is
+# what the EC2 instance pulls from.
+#
+# Authentication is OIDC, not access keys. GitHub mints a short-lived token for
+# this repository, AWS exchanges it for temporary credentials via a role, and
+# nothing long-lived is ever stored as a secret. That matters here beyond good
+# practice: this project's .env holds a real access key pair, and the whole
+# point is that CI never needs one.
+#
+# CONFIGURATION (Settings -> Secrets and variables -> Actions -> Variables):
+#   AWS_ROLE_ARN     arn:aws:iam::<account>:role/github-actions-ecr-push
+#   AWS_REGION       e.g. eu-west-1
+#   ECR_REPOSITORY   e.g. epex-forecaster
+#
+# They are repository *variables*, not secrets — a role ARN is not a
+# credential, and keeping it visible makes the wiring auditable. The account id
+# is the only sensitive-ish part, which is why it lives in a variable rather
+# than committed here.
+#
+# Until those are set the build job is skipped rather than failed, so a fresh
+# clone has a green CI without needing an AWS account. See docs/DOCKER.md.
+# ==============================================================================
+name: Publish images
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Which images to build
+        type: choice
+        default: serve
+        options: [serve, "serve,ui", "serve,ui,full"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Always runs, so the reason a publish did or did not happen is visible in the
+  # run summary instead of appearing as an unexplained skip.
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ vars.AWS_ROLE_ARN }}" ] \
+          && [ -n "${{ vars.AWS_REGION }}" ] \
+          && [ -n "${{ vars.ECR_REPOSITORY }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "### Publishing enabled" >> "$GITHUB_STEP_SUMMARY"
+            echo "Pushing to \`${{ vars.ECR_REPOSITORY }}\` in \`${{ vars.AWS_REGION }}\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Publishing skipped"
+              echo "ECR publishing is not configured for this repository."
+              echo "Set the repository variables \`AWS_ROLE_ARN\`, \`AWS_REGION\`"
+              echo "and \`ECR_REPOSITORY\`, and create the OIDC role from"
+              echo "\`infra/iam/trust-policy-github-oidc.json\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build-push:
+    name: build & push (${{ matrix.target }})
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write      # required to request the OIDC token
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: serve
+            requirements: requirements-api.txt
+          - target: ui
+            requirements: requirements-ui.txt
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Assume the ECR push role
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: gha-publish-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Two moving tags plus one immutable digest-style tag. The commit SHA tag
+      # is what a deployment should pin to: `:serve` moves, `:serve-<sha>` does
+      # not, so a rollback is a matter of naming the previous SHA.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: REQUIREMENTS=${{ matrix.requirements }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          provenance: false
+
+      - name: Summarise
+        run: |
+          {
+            echo "### ${{ matrix.target }}"
+            echo "- \`${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}\`"
+            echo "- \`${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}-${{ github.sha }}\` (pin deployments to this)"
+          } >> "$GITHUB_STEP_SUMMARY"

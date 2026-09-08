@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadModelArtifactOnly",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": ["arn:aws:s3:::__BUCKET__/mlflow-artifacts/*"]
+    },
+    {
+      "Sid": "WriteForecastArchiveOnly",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": ["arn:aws:s3:::__BUCKET__/forecasts/*"]
+    },
+    {
+      "Sid": "ListOneBucketOnly",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::__BUCKET__"
+    }
+  ]
+}

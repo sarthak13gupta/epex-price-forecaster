@@ -1,0 +1,14 @@
+# ==============================================================================
+# EVERYTHING — the default build target and the local development environment.
+#
+# Kept deliberately as the union of all three service sets so that:
+#   * `pip install -r requirements.txt` still gives a full working environment
+#   * the default `docker build` still produces an image that can BOTH train and
+#     serve — which is what running training on EC2 later will need
+#
+# Use the per-service files only when a slimmer image is wanted:
+#   docker build --build-arg REQUIREMENTS=requirements-api.txt .
+# ==============================================================================
+-r requirements-api.txt
+-r requirements-train.txt
+-r requirements-ui.txt

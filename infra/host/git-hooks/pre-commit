@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Blocks a commit that would stage a secret.
+#
+# .gitignore already excludes .env, and that is the primary control. This is the
+# second one, because the consequence of it failing once is a live AWS key pair
+# in a public repository's history — where removing it means a force-push and a
+# key rotation, not an edit. `git add -f` bypasses .gitignore silently; this
+# hook does not care how the file got staged.
+#
+# Install:  ./infra/host/git-hooks/install.sh
+set -euo pipefail
+
+staged() { git diff --cached --name-only --diff-filter=ACM; }
+fail=0
+say() { echo "  ✗ $*" >&2; fail=1; }
+
+# 1. Files that must never be staged, whatever they contain.
+while IFS= read -r f; do
+  case "$f" in
+    .env|.env.*)      [ "$f" = ".env.example" ] || say "$f is a secrets file" ;;
+    *.pem|*.key)      say "$f looks like a private key" ;;
+    mlflow.db*)       say "$f is local tracking state with absolute host paths" ;;
+    *.bak|*.bak.*|*.orig) say "$f is a backup file" ;;
+  esac
+done < <(staged)
+
+# 2. Credential-shaped content in what IS staged. Only the added lines are
+#    scanned, and only text files — a base64 image would match anything.
+while IFS= read -r f; do
+  case "$f" in *.png|*.jpg|*.jpeg|*.svg|*.docx|*.parquet|*.ipynb) continue ;; esac
+  added="$(git diff --cached -U0 -- "$f" | grep '^+' | grep -v '^+++' || true)"
+  [ -n "$added" ] || continue
+
+  echo "$added" | grep -qE 'AKIA[0-9A-Z]{16}' \
+    && say "$f contains an AWS access key id"
+  # An assignment, not a mention: `KEY=<value>` with an actual value.
+  echo "$added" | grep -qEi '(aws_)?secret_access_key[[:space:]]*[:=][[:space:]]*["'\'']?[A-Za-z0-9/+=]{20,}' \
+    && say "$f assigns an AWS secret access key"
+  echo "$added" | grep -qEi 'BEGIN [A-Z ]*PRIVATE KEY' \
+    && say "$f contains a private key block"
+done < <(staged)
+
+if [ "$fail" -ne 0 ]; then
+  cat >&2 <<'MSG'
+
+Commit blocked by the pre-commit secret guard.
+
+Unstage the offending file:      git restore --staged <file>
+  ...before the first commit:     git rm --cached <file>
+    (git restore --staged needs a HEAD to restore from, so it fails on an
+     empty repository with "fatal: could not resolve HEAD")
+If this is a false positive:     git commit --no-verify
+MSG
+  exit 1
+fi

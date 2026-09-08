@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" role="img" aria-label="The four-stage exogenous cascade: nuclear availability is the only known input; stage one forecasts four regional temperatures with a Fourier plus AR(2) model; stage two builds national temperature, EWM thermal inertia and degree days using a 14-day warm-up stitch; stage three forecasts demand with a Ridge model; stage four computes residual demand as demand minus nuclear. The result feeds the price model.">
+          <defs>
+            <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="#131B1E"></polygon>
+            </marker>
+            <marker id="ac-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="#0E5D6E"></polygon>
+            </marker>
+          </defs>
+
+          <!-- known input -->
+          <rect x="318" y="14" width="264" height="46" rx="3" fill="none" stroke="#0E5D6E" stroke-width="2.2"></rect>
+          <text x="450" y="34" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#0E5D6E">NUCLEAR AVAIL. (MW)</text>
+          <text x="450" y="50" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#0E5D6E" opacity="0.85">the only genuinely known future input</text>
+
+          <line x1="450" y1="62" x2="450" y2="88" stroke="#0E5D6E" stroke-width="2" marker-end="url(#ac-acc)"></line>
+
+          <!-- stage 1 -->
+          <rect x="188" y="90" width="524" height="60" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+          <text x="204" y="112" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#0E5D6E">01</text>
+          <text x="234" y="112" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="600" fill="#131B1E">WeatherForecaster</text>
+          <text x="234" y="130" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#131B1E" opacity="0.78">Fourier (2 harmonics) + linear trend + AR(2), OLS per region, rolled forward</text>
+          <text x="234" y="145" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.62">→ PARIS / LYON / BORDEAUX / MARSEILLE _AVGTEMP_C</text>
+
+          <line x1="450" y1="152" x2="450" y2="176" stroke="#131B1E" stroke-width="1.5" marker-end="url(#ac)"></line>
+
+          <!-- stage 2 -->
+          <rect x="188" y="178" width="524" height="76" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+          <text x="204" y="200" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#0E5D6E">02</text>
+          <text x="234" y="200" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="600" fill="#131B1E">Thermal block</text>
+          <text x="234" y="218" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#131B1E" opacity="0.78">weighted national temp (Paris .69 / Lyon .13 / Marseille .10 / Bordeaux .08)</text>
+          <text x="234" y="233" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#131B1E" opacity="0.78">EWM α=0.5 inertia · day-of-year climatology · degree days at 15 / 22 °C</text>
+          <text x="234" y="248" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.62">→ T_lisse, Delta_T, T_lisse_HDD, T_lisse_CDD</text>
+
+          <!-- warmup stitch -->
+          <rect x="24" y="186" width="146" height="60" rx="3" fill="none" stroke="#A9541F" stroke-width="1.5" stroke-dasharray="4 3"></rect>
+          <text x="97" y="208" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#A9541F">warm-up stitch</text>
+          <text x="97" y="224" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#A9541F" opacity="0.9">last 14 real days</text>
+          <text x="97" y="239" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#A9541F" opacity="0.9">keeps EWM continuous</text>
+          <line x1="172" y1="216" x2="184" y2="216" stroke="#A9541F" stroke-width="1.5" marker-end="url(#ac)"></line>
+
+          <line x1="450" y1="256" x2="450" y2="280" stroke="#131B1E" stroke-width="1.5" marker-end="url(#ac)"></line>
+
+          <!-- stage 3 -->
+          <rect x="188" y="282" width="524" height="60" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+          <text x="204" y="304" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#0E5D6E">03</text>
+          <text x="234" y="304" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="600" fill="#131B1E">LoadForecaster</text>
+          <text x="234" y="322" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#131B1E" opacity="0.78">StandardScaler + Ridge(α=1.0) on calendar + degree-day features</text>
+          <text x="234" y="337" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.62">→ DEMAND (MW)</text>
+
+          <line x1="450" y1="344" x2="450" y2="368" stroke="#131B1E" stroke-width="1.5" marker-end="url(#ac)"></line>
+
+          <!-- stage 4 -->
+          <rect x="188" y="370" width="524" height="52" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+          <text x="204" y="392" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#0E5D6E">04</text>
+          <text x="234" y="392" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="600" fill="#131B1E">Residual demand</text>
+          <text x="234" y="410" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#131B1E" opacity="0.75">Residual_Demand = DEMAND − NUCLEAR  (+ squared, cubed)</text>
+
+          <line x1="450" y1="424" x2="450" y2="446" stroke="#0E5D6E" stroke-width="2.2" marker-end="url(#ac-acc)"></line>
+          <text x="450" y="462" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="600" fill="#0E5D6E">Price model · 22 features → EUR/MWh</text>
+
+          <!-- nuclear bypass to stage 4 -->
+          <path d="M 582 37 C 800 37 812 300 716 396" fill="none" stroke="#0E5D6E" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ac-acc)"></path>
+          <text x="812" y="220" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#0E5D6E" opacity="0.9">passed</text>
+          <text x="812" y="234" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#0E5D6E" opacity="0.9">through</text>
+        </svg>

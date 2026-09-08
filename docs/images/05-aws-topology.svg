@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" role="img" aria-label="Target AWS topology. A single EC2 instance in a public subnet runs three Docker containers: Streamlit on 8501, FastAPI on 8000, and MLflow on 5000, with only 443 exposed via Nginx. S3 holds raw, processed and MLflow artifact prefixes. An EventBridge schedule triggers the training container. Container-to-S3 access uses an IAM instance role, not static keys.">
+          <defs>
+            <marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="#131B1E"></polygon>
+            </marker>
+            <marker id="aw-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="#0E5D6E"></polygon>
+            </marker>
+          </defs>
+
+          <!-- VPC -->
+          <rect x="150" y="34" width="470" height="330" rx="5" fill="none" stroke="#131B1E" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.6"></rect>
+          <text x="162" y="54" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.7" letter-spacing="1.2">VPC · PUBLIC SUBNET</text>
+
+          <!-- EC2 -->
+          <rect x="172" y="70" width="426" height="272" rx="4" fill="none" stroke="#0E5D6E" stroke-width="2"></rect>
+          <text x="186" y="92" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="600" fill="#0E5D6E">EC2 · t3.large</text>
+          <text x="186" y="108" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#0E5D6E" opacity="0.8">docker compose · 2 vCPU / 8 GiB / 30 GiB gp3</text>
+
+          <!-- nginx -->
+          <rect x="190" y="124" width="390" height="34" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="385" y="146" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#131B1E">Nginx · TLS termination · only :443 open to the internet</text>
+
+          <!-- containers -->
+          <rect x="190" y="174" width="120" height="60" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="250" y="198" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">Streamlit</text>
+          <text x="250" y="215" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.7">:8501</text>
+
+          <rect x="325" y="174" width="120" height="60" rx="3" fill="none" stroke="#0E5D6E" stroke-width="1.8"></rect>
+          <text x="385" y="198" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#0E5D6E">FastAPI</text>
+          <text x="385" y="215" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#0E5D6E" opacity="0.8">:8000</text>
+
+          <rect x="460" y="174" width="120" height="60" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="520" y="198" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">MLflow</text>
+          <text x="520" y="215" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.7">:5000</text>
+
+          <line x1="250" y1="176" x2="250" y2="160" stroke="#131B1E" stroke-width="1.2"></line>
+          <line x1="520" y1="176" x2="520" y2="160" stroke="#131B1E" stroke-width="1.2"></line>
+          <line x1="313" y1="204" x2="322" y2="204" stroke="#131B1E" stroke-width="1.3" marker-end="url(#aw)"></line>
+          <line x1="457" y1="204" x2="448" y2="204" stroke="#0E5D6E" stroke-width="1.5" marker-end="url(#aw-acc)"></line>
+
+          <!-- training container -->
+          <rect x="325" y="262" width="255" height="56" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3" stroke-dasharray="5 3"></rect>
+          <text x="452" y="284" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">Training container</text>
+          <text x="452" y="301" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.7">run to completion, then exit</text>
+
+          <line x1="452" y1="260" x2="452" y2="238" stroke="#131B1E" stroke-width="1.2" marker-end="url(#aw)"></line>
+          <text x="540" y="252" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.75">registers model</text>
+
+          <!-- EventBridge -->
+          <rect x="172" y="262" width="120" height="56" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="232" y="284" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">EventBridge</text>
+          <text x="232" y="301" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.7">daily cron</text>
+          <line x1="295" y1="290" x2="321" y2="290" stroke="#131B1E" stroke-width="1.3" marker-end="url(#aw)"></line>
+
+          <!-- browser -->
+          <rect x="16" y="174" width="104" height="60" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="68" y="205" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#131B1E">Analyst</text>
+          <text x="68" y="222" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.7">browser</text>
+          <line x1="123" y1="196" x2="186" y2="152" stroke="#131B1E" stroke-width="1.3" marker-end="url(#aw)"></line>
+          <text x="130" y="176" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.75">:443</text>
+
+          <!-- S3 -->
+          <rect x="660" y="106" width="224" height="176" rx="4" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+          <text x="772" y="132" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="600" fill="#131B1E">S3</text>
+          <text x="676" y="158" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.8">raw/epex/dt=YYYY-MM-DD/</text>
+          <text x="676" y="180" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.8">processed/clean/</text>
+          <text x="676" y="202" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.8">mlflow-artifacts/</text>
+          <text x="676" y="224" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.8">forecasts/dt=YYYY-MM-DD/</text>
+          <text x="676" y="246" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.65">versioning on · SSE-S3</text>
+          <text x="676" y="264" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#131B1E" opacity="0.65">lifecycle → IA at 90d, Glacier at 1y</text>
+
+          <!-- s3 arrows -->
+          <line x1="602" y1="290" x2="656" y2="272" stroke="#131B1E" stroke-width="1.3" marker-end="url(#aw)"></line>
+          <line x1="602" y1="204" x2="656" y2="192" stroke="#131B1E" stroke-width="1.3" marker-end="url(#aw)"></line>
+          <path d="M 598 330 C 640 330 664 320 672 306" fill="none" stroke="#0E5D6E" stroke-width="1.3" stroke-dasharray="3 3"></path>
+          <text x="884" y="326" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#0E5D6E">IAM instance role</text>
+          <text x="884" y="340" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#0E5D6E">no static keys</text>
+        </svg>

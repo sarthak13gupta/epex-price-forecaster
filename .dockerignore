@@ -1,0 +1,51 @@
+# Anything not needed to build or run the image. Every excluded path is one
+# less thing in the build context, which keeps builds fast and images small.
+
+# Secrets — must never enter an image layer
+.env
+.env.*
+!.env.example
+
+# Virtualenv and caches
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data and generated artifacts. Mounted as volumes at runtime instead of
+# baked in, so the image stays reusable across data versions.
+data/
+results/
+mlruns/
+mlartifacts/
+mlflow.db
+*.parquet
+
+# Research and documentation — not needed at runtime
+notebooks/
+docs/
+scripts/
+
+# Tests, CI config and infrastructure definitions. CI runs the suite by
+# bind-mounting tests/ into the built image, which also proves the image's
+# own dependency set is sufficient — so baking them in would add weight
+# without adding coverage.
+tests/
+pytest.ini
+.github/
+infra/
+
+# Editors / OS / VCS
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Docker's own files
+Dockerfile
+docker-compose.yml
+.dockerignore

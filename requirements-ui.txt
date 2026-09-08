@@ -1,0 +1,8 @@
+# ==============================================================================
+# UI — presentation only. Holds no model; talks to the API over HTTP.
+# ==============================================================================
+-r requirements-base.txt
+
+streamlit==1.62.0
+plotly==7.0.0
+requests==2.34.2

@@ -1,0 +1,13 @@
+# ==============================================================================
+# TRAIN — the batch pipeline. Everything here is absent from the API image.
+#
+# shap pulls numba -> llvmlite (171 MB), which is the single largest saving from
+# splitting. statsmodels/matplotlib/seaborn are diagnostics only.
+# ==============================================================================
+-r requirements-base.txt
+
+optuna==4.9.0
+shap==0.52.0
+statsmodels==0.15.0
+matplotlib==3.11.1
+seaborn==0.13.2

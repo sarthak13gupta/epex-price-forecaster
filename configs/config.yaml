@@ -1,0 +1,251 @@
+# ==============================================================================
+# DATASET CONFIGURATION
+# ==============================================================================
+dataset:
+  date_col: "Date"
+  date_format: "%Y-%m-%d"
+  target: "PRICE (EUR/MWH)"
+  freq: "D"
+
+# Paths are relative to the project root and resolved to absolute by
+# src/utils/config_loader.py, so the same config works locally and in Docker.
+paths:
+  raw_train_csv: "data/raw/epex_fr_temp_train.csv"
+  raw_pred_csv: "data/raw/epex_fr_temp_pred.csv"
+  processed_parquet: "data/processed/clean_data.parquet"
+  output_dir: "results/"
+
+  # S3 key prefixes, used when ENV=production. Date-partitioned prefixes keep
+  # the archive append-only and are recognised as partitions by Athena/Glue.
+  s3_prefixes:
+    raw: "raw/epex/"
+    processed: "processed/clean/"
+    forecasts: "forecasts/"
+    artifacts: "mlflow-artifacts/"
+
+# ==============================================================================
+# FEATURE DEFINITIONS
+# ==============================================================================
+features:
+  # Raw regional temperature columns. These are simulated at inference time by
+  # the WeatherForecaster and dropped before the price model sees them.
+  weather:
+    - "PARIS_AVGTEMP_C"
+    - "LYON_AVGTEMP_C"
+    - "BORDEAUX_AVGTEMP_C"
+    - "MARSEILLE_AVGTEMP_C"
+  market:
+    - "NUCLEAR AVAIL. (MW)"
+    - "DEMAND (MW)"
+
+  calendar:
+    - "year"
+    - "month"
+    - "day_of_year"
+    - "day_of_week"
+    - "is_weekend"
+    - "is_holiday"
+    - "is_lockdown"
+    - "sin_day_of_year"
+    - "cos_day_of_year"
+    - "is_school_end_july"
+    - "is_bastille_bridge"
+    - "is_grandes_vacances_july"
+    - "is_august_vacation"
+
+  thermal:
+    - "T_lisse"
+    - "Delta_T"
+
+  # Residual_Demand is DEMAND - NUCLEAR, so including all three alongside the
+  # polynomial terms is deliberately redundant (see feature_set below).
+  residual_demand:
+    - "Residual_Demand"
+    - "Residual_Demand_sq"
+    - "Residual_Demand_cu"
+
+  # Which blocks make up the final price-model design matrix.
+  # "notebook" reproduces the notebook exactly (keeps the collinear
+  # DEMAND/NUCLEAR/Residual_Demand trio). "decorrelated" drops the raw
+  # DEMAND/NUCLEAR levels and keeps only the residual-demand basis.
+  feature_set: "notebook"
+
+# ==============================================================================
+# FEATURE ENGINEERING CONFIGURATION
+# ==============================================================================
+feature_engineering:
+  # Degree Days
+  heating_threshold_c: 15.0
+  cooling_threshold_c: 22.0
+
+  # Which temperature column(s) the HDD/CDD features are derived from.
+  # The notebook derives degree days from the smoothed *national* temperature
+  # (T_lisse), not from the individual city columns.
+  hdd_cdd_reference:
+    - "T_lisse"
+
+  # Residual Demand
+  demand_col: "DEMAND (MW)"
+  nuclear_col: "NUCLEAR AVAIL. (MW)"
+
+  # Calendar & Regimes
+  lockdown_start: "2020-03-17"
+  lockdown_end: "2020-05-11"
+
+  # National Temperature Weights
+  temp_weights:
+    PARIS_AVGTEMP_C: 0.69
+    LYON_AVGTEMP_C: 0.13
+    MARSEILLE_AVGTEMP_C: 0.10
+    BORDEAUX_AVGTEMP_C: 0.08
+  ewm_alpha: 0.5
+
+# ==============================================================================
+# BACKTESTING SCHEDULE CONFIGURATION
+# ==============================================================================
+backtest:
+  # Options: "extended_summer", "core_summer", "twelve_month_span"
+  active_schedule: "extended_summer"
+
+  # Rolling training window that precedes every test fold (2 years).
+  train_window_days: 731
+
+  # Days of real history stitched in front of a forecast so the EWM thermal
+  # inertia (T_lisse) starts from a warm state instead of from the first
+  # forecast day.
+  warmup_days: 14
+
+  schedules:
+    # --------------------------------------------------------------------------
+    # 12-Month Continuous Span
+    # --------------------------------------------------------------------------
+    twelve_month_span:
+      - {test_start: "2019-07-01", test_end: "2019-07-31", regime: "Normal Summer"}
+      - {test_start: "2019-08-01", test_end: "2019-08-31", regime: "Summer Holiday Dip"}
+      - {test_start: "2019-09-01", test_end: "2019-09-30", regime: "Autumn Transition"}
+      - {test_start: "2019-10-01", test_end: "2019-10-31", regime: "Winter Ramp-Up"}
+      - {test_start: "2019-11-01", test_end: "2019-11-30", regime: "Heating Season"}
+      - {test_start: "2019-12-01", test_end: "2019-12-31", regime: "Peak Winter Load"}
+      - {test_start: "2020-01-01", test_end: "2020-01-31", regime: "Peak Winter Load"}
+      - {test_start: "2020-02-01", test_end: "2020-02-29", regime: "Late Winter Heating"}
+      - {test_start: "2020-03-01", test_end: "2020-03-31", regime: "COVID-19 Outbreak"}
+      - {test_start: "2020-04-01", test_end: "2020-04-30", regime: "Lockdown / Price Slump"}
+      - {test_start: "2020-05-01", test_end: "2020-05-31", regime: "Demand Collapse"}
+      - {test_start: "2020-06-01", test_end: "2020-06-30", regime: "Early Summer Transition"}
+
+    # --------------------------------------------------------------------------
+    # Extended Summer Profile
+    # --------------------------------------------------------------------------
+    extended_summer:
+      # --- 2018 Warm Season ---
+      - {test_start: "2018-05-01", test_end: "2018-05-31", regime: "Spring Transition (2018)"}
+      - {test_start: "2018-06-01", test_end: "2018-06-30", regime: "Early Summer (2018)"}
+      - {test_start: "2018-07-01", test_end: "2018-07-31", regime: "July Vacations (2018)"}
+      - {test_start: "2018-08-01", test_end: "2018-08-31", regime: "August Industrial Trough (2018)"}
+      - {test_start: "2018-09-01", test_end: "2018-09-30", regime: "Back to School / Autumn (2018)"}
+      # --- 2019 Warm Season ---
+      - {test_start: "2019-05-01", test_end: "2019-05-31", regime: "Spring Transition (2019)"}
+      - {test_start: "2019-06-01", test_end: "2019-06-30", regime: "Early Summer (2019)"}
+      - {test_start: "2019-07-01", test_end: "2019-07-31", regime: "July Vacations (2019)"}
+      - {test_start: "2019-08-01", test_end: "2019-08-31", regime: "August Industrial Trough (2019)"}
+      - {test_start: "2019-09-01", test_end: "2019-09-30", regime: "Back to School / Autumn (2019)"}
+      # --- 2020 Pre-Holdout ---
+      - {test_start: "2020-05-01", test_end: "2020-05-31", regime: "COVID-19 Demand Collapse (2020)"}
+      - {test_start: "2020-06-01", test_end: "2020-06-30", regime: "Lockdown Easing / Early Summer (2020)"}
+
+    # --------------------------------------------------------------------------
+    # Core Summer Profile
+    # --------------------------------------------------------------------------
+    core_summer:
+      # --- 2017 Core Summer ---
+      - {test_start: "2017-06-01", test_end: "2017-06-30", regime: "Early Summer (2017)"}
+      - {test_start: "2017-07-01", test_end: "2017-07-31", regime: "July Vacations (2017)"}
+      - {test_start: "2017-08-01", test_end: "2017-08-31", regime: "August Trough (2017)"}
+      # --- 2018 Core Summer ---
+      - {test_start: "2018-06-01", test_end: "2018-06-30", regime: "Early Summer (2018)"}
+      - {test_start: "2018-07-01", test_end: "2018-07-31", regime: "July Vacations (2018)"}
+      - {test_start: "2018-08-01", test_end: "2018-08-31", regime: "August Trough (2018)"}
+      # --- 2019 Core Summer ---
+      - {test_start: "2019-06-01", test_end: "2019-06-30", regime: "Early Summer (2019)"}
+      - {test_start: "2019-07-01", test_end: "2019-07-31", regime: "July Vacations (2019)"}
+      - {test_start: "2019-08-01", test_end: "2019-08-31", regime: "August Trough (2019)"}
+      # --- 2020 Pre-Holdout ---
+      - {test_start: "2020-06-01", test_end: "2020-06-30", regime: "Early Summer (2020)"}
+
+# ==============================================================================
+# MODEL & HYPERPARAMETER TUNING CONFIGURATION
+# ==============================================================================
+models:
+  random_state: 42
+
+  # Which entries of the model registry to evaluate, in order.
+  enabled:
+    - "Baseline_Seasonal"
+    - "ElasticNet"
+    - "XGBoost"
+
+  # Metric used to pick the winner off the leaderboard. One of "mae" / "rmse".
+  selection_metric: "mae"
+
+  optuna:
+    n_trials: 50
+    timeout_seconds: 600
+    early_stopping_rounds: 20
+
+  baseline_seasonal:
+    shift_days: 364
+
+  elastic_net:
+    alpha_min: 0.0001
+    alpha_max: 10.0
+    l1_ratio_min: 0.0
+    l1_ratio_max: 1.0
+    max_iter: 10000
+
+  xgboost:
+    n_estimators_min: 100
+    n_estimators_max: 1000
+    n_estimators_step: 100
+    learning_rate_min: 0.01
+    learning_rate_max: 0.3
+    max_depth_min: 3
+    max_depth_max: 10
+    subsample_min: 0.5
+    subsample_max: 1.0
+    colsample_bytree_min: 0.5
+    colsample_bytree_max: 1.0
+
+# ==============================================================================
+# FINAL FORECAST / HOLDOUT CONFIGURATION
+# ==============================================================================
+forecast:
+  # Bounds the training run's holdout forecast. Leave both null to forecast the
+  # full span of whatever the prediction file covers, which is what a live daily
+  # feed should do.
+  holdout_start: "2020-07-01"
+  holdout_end: "2020-07-31"
+  # Maximum horizon the served model will accept, in days. The weather model's
+  # AR(2) term decays to its deterministic seasonal mean well before this, so
+  # longer horizons carry no real information.
+  max_horizon_days: 31
+
+# ==============================================================================
+# MLFLOW TRACKING & REGISTRY
+# ==============================================================================
+mlflow:
+  # Overridable with the MLFLOW_TRACKING_URI environment variable.
+  # A database backend is required: the file store is in maintenance mode as of
+  # MLflow 3.x and has never supported the model registry.
+  tracking_uri: "sqlite:///mlflow.db"
+  # Where run artifacts (plots, CSVs, model bundles) are written.
+  artifact_location: "mlartifacts"
+  experiment_name: "french_spot_price_forecasting"
+  registered_model_name: "french_spot_price_forecaster"
+
+# ==============================================================================
+# EXPLAINABILITY
+# ==============================================================================
+explainability:
+  enabled: true
+  # Rows sampled from the training window as SHAP background data.
+  background_samples: 100

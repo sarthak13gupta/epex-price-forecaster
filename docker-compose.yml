@@ -1,0 +1,141 @@
+# Local and single-instance EC2 deployment.
+#
+# Ports are deliberately bound to 127.0.0.1 rather than 0.0.0.0. On EC2 nothing
+# but Nginx on :443 should be reachable from the internet — an exposed MLflow
+# port in particular is a delete-my-registry button, since MLflow has no
+# authentication of its own.
+#
+# LOCAL ARTIFACT STORE CAVEAT
+#   With ENV=local, MLflow's artifact location is a HOST path recorded in
+#   mlflow.db at experiment-creation time. A container therefore needs it
+#   bind-mounted at that same absolute path, and needs to run as the host uid,
+#   because MLflow writes `registered_model_meta` into the artifact directory
+#   when loading a registered model. Both are handled below via HOST_PROJECT_DIR
+#   and UID/GID.
+#
+#   With ENV=production the artifact location becomes s3://<bucket>/mlflow-artifacts,
+#   and neither workaround is needed: an S3 URI resolves identically from any
+#   machine and any user. That is the deployment path.
+#
+# Usage:
+#   export HOST_PROJECT_DIR=$PWD HOST_UID=$(id -u) HOST_GID=$(id -g)
+#   docker compose up api mlflow
+
+services:
+
+  # ---------------------------------------------------------------- inference
+  api:
+    # Slim serving image: no optuna, shap, statsmodels, matplotlib or streamlit.
+    # Verified against the real import graph — the inference path loads none of
+    # them. Training capability is not lost, it lives in the :full image below.
+    build:
+      context: .
+      args:
+        REQUIREMENTS: requirements-api.txt
+    image: epex-forecaster:serve
+    command: >
+      uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      ENV: ${ENV:-local}
+      PROJECT_ROOT: /app
+      MLFLOW_TRACKING_URI: sqlite:////app/mlflow.db
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-}
+      S3_TRAIN_FILE_KEY: ${S3_TRAIN_FILE_KEY:-}
+      S3_PRED_FILE_KEY: ${S3_PRED_FILE_KEY:-}
+      # MODEL_URI overrides registry resolution; leave unset to use
+      # @champion, falling back to the highest registered version.
+      MODEL_URI: ${MODEL_URI:-}
+    # Run as the host user so MLflow can write registered_model_meta into a
+    # bind-mounted local artifact store. Irrelevant once artifacts are on S3.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./results:/app/results
+      # Mounted at the HOST path, because that is what mlflow.db records for a
+      # local artifact store. Harmless when ENV=production, where the location
+      # is an s3:// URI and this mount is simply unused.
+      - ./mlartifacts:${HOST_PROJECT_DIR:-/app}/mlartifacts
+    healthcheck:
+      # Asserts the MODEL loaded, not merely that the process is up. A service
+      # reporting healthy with no model is worse than one plainly down.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------- presentation
+  ui:
+    build:
+      context: .
+      args:
+        REQUIREMENTS: requirements-ui.txt
+    image: epex-forecaster:ui
+    command: >
+      streamlit run src/ui/app.py
+      --server.port 8501 --server.address 0.0.0.0
+      --server.headless true --browser.gatherUsageStats false
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      # The UI holds no model; it reaches inference over the docker network.
+      API_BASE_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: ["ui"]   # not yet written; `--profile ui` once src/ui/app.py exists
+
+  # --------------------------------------------------- tracking and registry
+  mlflow:
+    # Reuses the serving image: full mlflow is in requirements-base, so the
+    # tracking UI runs without the training extras.
+    build:
+      context: .
+      args:
+        REQUIREMENTS: requirements-api.txt
+    image: epex-forecaster:serve
+    command: >
+      mlflow ui --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////app/mlflow.db
+    ports:
+      - "127.0.0.1:5000:5000"
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlartifacts:${HOST_PROJECT_DIR:-/app}/mlartifacts
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ batch
+  train:
+    # The FULL image — trains and serves. This is the target to use if the whole
+    # pipeline is ever run on EC2 rather than only inference.
+    build:
+      context: .
+      args:
+        REQUIREMENTS: requirements.txt
+    image: epex-forecaster:full
+    command: >
+      python -m src.pipelines.train_pipeline
+    environment:
+      ENV: ${ENV:-local}
+      PROJECT_ROOT: /app
+      MLFLOW_TRACKING_URI: sqlite:////app/mlflow.db
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-}
+      S3_TRAIN_FILE_KEY: ${S3_TRAIN_FILE_KEY:-}
+      S3_PRED_FILE_KEY: ${S3_PRED_FILE_KEY:-}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./results:/app/results
+      - ./data:/app/data
+      - ./mlartifacts:${HOST_PROJECT_DIR:-/app}/mlartifacts
+    # Runs to completion and exits. Never restart a batch job automatically:
+    # a failing train loop would retry forever and burn the instance.
+    restart: "no"
+    profiles: ["train"]   # `docker compose --profile train run --rm train`

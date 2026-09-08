@@ -1,0 +1,7 @@
+# ==============================================================================
+# DEV — the full environment plus the test toolchain. What a developer installs.
+#
+#   pip install -r requirements-dev.txt && pytest
+# ==============================================================================
+-r requirements.txt
+-r requirements-test.txt

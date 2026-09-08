@@ -1,0 +1,201 @@
+# ==============================================================================
+# CI — runs on every push and pull request.
+#
+# Three things are checked, in increasing cost:
+#
+#   1. tests (serve)  — the suite against the SLIM api requirement set. This is
+#                       the check that keeps the requirements split honest: if a
+#                       training-only import (optuna, shap, matplotlib) leaks
+#                       into the serving path, this job fails while the full one
+#                       still passes.
+#   2. tests (full)   — the suite against the complete environment, no skips.
+#   3. images         — builds the serve and ui images and boots the API
+#                       container. Catches Dockerfile and layer-cleanup
+#                       breakage that no amount of pytest can see.
+#
+# No AWS credentials are configured anywhere in this file, and ENV stays
+# "local", so nothing here can reach S3 or a real tracking store.
+# ==============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch supersedes the previous run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  ENV: local
+
+jobs:
+  # A local pre-commit hook (infra/host/git-hooks/) is the first guard, but a
+  # hook only protects people who installed it and `--no-verify` skips it. This
+  # runs server-side, where neither is true. It scans the working tree rather
+  # than the diff so it also catches something committed before the hook
+  # existed.
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Files that must never be committed
+        run: |
+          bad=0
+          for pattern in '.env' '*.pem' '*.key' 'mlflow.db' '*.bak'; do
+            # shellcheck disable=SC2086
+            found=$(git ls-files -- "$pattern" | grep -v '^\.env\.example$' || true)
+            if [ -n "$found" ]; then
+              echo "::error::committed file matching $pattern:"; echo "$found"
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ] && echo "  no forbidden files ✅"
+          exit "$bad"
+
+      - name: Credential-shaped content
+        run: |
+          bad=0
+          if git grep -nE 'AKIA[0-9A-Z]{16}' -- . ; then
+            echo "::error::an AWS access key id is committed"; bad=1
+          fi
+          if git grep -nEi '(aws_)?secret_access_key[[:space:]]*[:=][[:space:]]*["'\''"]?[A-Za-z0-9/+=]{20,}' -- . ; then
+            echo "::error::an AWS secret access key is committed"; bad=1
+          fi
+          if git grep -nE 'BEGIN [A-Z ]*PRIVATE KEY' -- . ; then
+            echo "::error::a private key block is committed"; bad=1
+          fi
+          [ "$bad" -eq 0 ] && echo "  no credential-shaped strings ✅"
+          exit "$bad"
+
+  tests:
+    name: tests (${{ matrix.set }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - set: serve
+            requirements: requirements-api.txt
+          - set: full
+            requirements: requirements.txt
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install ${{ matrix.set }} environment
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ${{ matrix.requirements }} -r requirements-test.txt
+
+      - name: Run tests
+        run: pytest -v
+
+      - name: Report what was skipped
+        if: always()
+        run: |
+          echo "Requirement set: ${{ matrix.requirements }}"
+          echo "Skips in the 'serve' job are expected — the training and UI"
+          echo "import tests guard themselves with importorskip."
+
+  images:
+    name: images
+    runs-on: ubuntu-latest
+    needs: [secrets, tests]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Loaded into the local daemon rather than pushed, so the smoke step can
+      # actually run the thing that was just built.
+      - name: Build serve image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: epex-forecaster:serve
+          build-args: REQUIREMENTS=requirements-api.txt
+          cache-from: type=gha,scope=serve
+          cache-to: type=gha,mode=max,scope=serve
+
+      - name: Build ui image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: epex-forecaster:ui
+          build-args: REQUIREMENTS=requirements-ui.txt
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,mode=max,scope=ui
+
+      - name: Report image sizes
+        run: docker image ls epex-forecaster --format '  {{.Tag}}\t{{.Size}}'
+
+      # There is no model registry in CI, so a healthy API is not the expected
+      # outcome — a *gracefully degraded* one is. The API captures a load
+      # failure instead of raising, so it must boot, stay up, and answer
+      # /health with 503 "unhealthy". A crash-loop or a bare 200 both fail here.
+      - name: Smoke test the API container
+        run: |
+          # Published on 18000, not 8000. A host process bound to
+          # 127.0.0.1:8000 wins over Docker's 0.0.0.0:8000 proxy for loopback
+          # traffic, so a curl to :8000 can silently answer from the host
+          # instead of the container — which is exactly how this step first
+          # passed against the wrong process. An unusual port removes the
+          # ambiguity. --noproxy is needed because curl honours HTTP_PROXY
+          # even for loopback.
+          docker run -d --name api-smoke -p 18000:8000 \
+            -e ENV=local -e PROJECT_ROOT=/app \
+            epex-forecaster:serve
+
+          # mlflow's import alone takes several seconds; a cold runner is
+          # slower still.
+          for attempt in $(seq 1 60); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' \
+                     --noproxy '*' http://127.0.0.1:18000/health || true)
+            if [ "$code" = "503" ] || [ "$code" = "200" ]; then
+              echo "API answered with HTTP $code after ${attempt}s"
+              cat /tmp/health.json; echo
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$code" != "503" ] && [ "$code" != "200" ]; then
+            echo "::error::API never answered /health (last code: '$code')"
+            docker logs api-smoke
+            exit 1
+          fi
+
+          # The generated OpenAPI schema must render — response-model
+          # misconfiguration only surfaces at this point.
+          curl -sf --noproxy '*' http://127.0.0.1:18000/openapi.json \
+            | python -c 'import json,sys; d=json.load(sys.stdin); assert "/predict" in d["paths"]; print("  openapi.json OK")'
+
+          # The image must not run as root.
+          uid=$(docker exec api-smoke id -u)
+          echo "  container uid: $uid"
+          [ "$uid" != "0" ] || { echo "::error::container runs as root"; exit 1; }
+
+      - name: Container logs
+        if: always()
+        run: docker logs api-smoke 2>&1 || true
+
+      - name: Tear down
+        if: always()
+        run: docker rm -f api-smoke 2>/dev/null || true

@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 650" role="img" aria-label="Module dependency graph. The training pipeline is the only module that orders things; a spine on the left connects it to each of the six stages. Data loading feeds preprocessing then static feature engineering, validated by three pandera contracts. The backtest fits the exogenous cascade once per fold. The registry supplies candidates to Optuna tuning, which reuses the cached folds. Analysis builds the leaderboard and SHAP attributions. The forecaster bundles the fitted cascade and is logged to MLflow.">
+  <defs>
+    <marker id="mg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#131B1E"></polygon>
+    </marker>
+    <marker id="mg-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#0E5D6E"></polygon>
+    </marker>
+    <marker id="mg-warm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#A9541F"></polygon>
+    </marker>
+    <marker id="mg-faint" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <polygon points="0,1 10,5 0,9" fill="#8B9C9F"></polygon>
+    </marker>
+  </defs>
+
+  <!-- ============ orchestrator ============ -->
+  <rect x="310" y="14" width="300" height="46" rx="3" fill="none" stroke="#0E5D6E" stroke-width="2.2"></rect>
+  <text x="460" y="34" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="600" fill="#0E5D6E">pipelines/train_pipeline.py</text>
+  <text x="460" y="50" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#0E5D6E">the only module that orders things</text>
+
+  <!-- spine -->
+  <path d="M 460 60 V 78 H 236 V 552" fill="none" stroke="#0E5D6E" stroke-width="1.8"></path>
+
+  <!-- ============ config (left) ============ -->
+  <rect x="20" y="112" width="160" height="62" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="100" y="134" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">utils/config_loader</text>
+  <text x="100" y="151" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">resolves root + paths</text>
+  <text x="100" y="165" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">derives 22 feature names</text>
+
+  <rect x="20" y="192" width="160" height="32" rx="3" fill="none" stroke="#8B9C9F" stroke-width="1.2" stroke-dasharray="4 3"></rect>
+  <text x="100" y="212" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#8B9C9F">configs/config.yaml</text>
+  <line x1="100" y1="190" x2="100" y2="178" stroke="#8B9C9F" stroke-width="1.2" marker-end="url(#mg-faint)"></line>
+
+  <line x1="184" y1="143" x2="230" y2="143" stroke="#8B9C9F" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#mg-faint)"></line>
+  <text x="199" y="132" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#8B9C9F">read by</text>
+  <text x="199" y="122" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#8B9C9F">every stage</text>
+
+  <!-- ============ STAGE 1-2 ============ -->
+  <text x="268" y="104" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#0E5D6E" letter-spacing="1.2">STAGE 1 - 2  ingest, clean, static features</text>
+  <line x1="236" y1="139" x2="264" y2="139" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#mg-acc)"></line>
+
+  <rect x="268" y="112" width="148" height="54" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="342" y="134" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">data/data_loader</text>
+  <text x="342" y="151" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">disk or S3</text>
+
+  <rect x="432" y="112" width="148" height="54" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="506" y="134" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">data/preprocess</text>
+  <text x="506" y="151" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">gap-free daily index</text>
+
+  <rect x="596" y="112" width="168" height="54" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="680" y="134" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">features/build_features</text>
+  <text x="680" y="151" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">calendar + residual demand</text>
+
+  <line x1="418" y1="139" x2="428" y2="139" stroke="#131B1E" stroke-width="1.4" marker-end="url(#mg)"></line>
+  <line x1="582" y1="139" x2="592" y2="139" stroke="#131B1E" stroke-width="1.4" marker-end="url(#mg)"></line>
+
+  <!-- schema, dashed, validating preprocess -->
+  <rect x="800" y="112" width="140" height="54" rx="3" fill="none" stroke="#8B9C9F" stroke-width="1.4" stroke-dasharray="4 3"></rect>
+  <text x="870" y="134" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">data/schema</text>
+  <text x="870" y="151" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">3 pandera contracts</text>
+  <path d="M 800 158 C 720 188 600 190 510 172" fill="none" stroke="#8B9C9F" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#mg-faint)"></path>
+  <text x="938" y="206" text-anchor="end" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#8B9C9F">validates all 3 frame types</text>
+
+  <!-- ============ STAGE 3 ============ -->
+  <text x="268" y="228" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#0E5D6E" letter-spacing="1.2">STAGE 3  walk-forward folds</text>
+  <line x1="236" y1="271" x2="264" y2="271" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#mg-acc)"></line>
+
+  <rect x="268" y="240" width="180" height="62" rx="3" fill="none" stroke="#0E5D6E" stroke-width="2"></rect>
+  <text x="358" y="262" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#0E5D6E">models/backtest</text>
+  <text x="358" y="278" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E" opacity="0.9">prepare_folds()</text>
+  <text x="358" y="292" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E" opacity="0.9">evaluate_folds()</text>
+
+  <rect x="512" y="232" width="252" height="78" rx="3" fill="none" stroke="#A9541F" stroke-width="2"></rect>
+  <text x="638" y="254" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#A9541F">models/simulate_exogenous</text>
+  <text x="638" y="271" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">ExogenousCascade</text>
+  <text x="638" y="285" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F" opacity="0.9">WeatherForecaster · LoadForecaster</text>
+  <text x="638" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F" opacity="0.9">RobustArcSinTransformer</text>
+
+  <line x1="450" y1="271" x2="508" y2="271" stroke="#0E5D6E" stroke-width="1.8" marker-end="url(#mg-acc)"></line>
+  <text x="479" y="262" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E">fit ×12</text>
+
+  <!-- cascade uses build_features -->
+  <line x1="545" y1="230" x2="612" y2="170" stroke="#A9541F" stroke-width="1.4" marker-end="url(#mg-warm)"></line>
+
+  <!-- ============ STAGE 4 ============ -->
+  <text x="268" y="340" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#0E5D6E" letter-spacing="1.2">STAGE 4  benchmark + tune</text>
+  <line x1="236" y1="380" x2="264" y2="380" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#mg-acc)"></line>
+
+  <rect x="268" y="352" width="180" height="56" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="358" y="374" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">models/registry</text>
+  <text x="358" y="391" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">3 candidates + spaces</text>
+
+  <rect x="512" y="352" width="180" height="56" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="602" y="374" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">models/train_tune</text>
+  <text x="602" y="391" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">Optuna TPE + patience</text>
+
+  <line x1="450" y1="380" x2="508" y2="380" stroke="#131B1E" stroke-width="1.4" marker-end="url(#mg)"></line>
+
+  <!-- tuning reuses cached folds -->
+  <path d="M 692 366 C 718 366 724 336 700 328 C 620 322 470 318 420 304" fill="none" stroke="#0E5D6E" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#mg-acc)"></path>
+  <text x="888" y="345" text-anchor="end" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">every trial reuses</text>
+  <text x="888" y="358" text-anchor="end" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">the cached folds</text>
+
+  <!-- ============ STAGE 5 ============ -->
+  <text x="268" y="440" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#0E5D6E" letter-spacing="1.2">STAGE 5  leaderboard + attribution</text>
+  <line x1="236" y1="480" x2="264" y2="480" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#mg-acc)"></line>
+
+  <rect x="268" y="452" width="180" height="56" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="358" y="474" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">analysis/evaluate</text>
+  <text x="358" y="491" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">leaderboard · regimes</text>
+
+  <rect x="512" y="452" width="180" height="56" rx="3" fill="none" stroke="#131B1E" stroke-width="1.5"></rect>
+  <text x="602" y="474" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#131B1E">analysis/explainability</text>
+  <text x="602" y="491" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">SHAP, both views</text>
+
+  <!-- ============ STAGE 6 ============ -->
+  <text x="700" y="436" font-family="DejaVu Sans Mono, monospace" font-size="9.5" fill="#0E5D6E" letter-spacing="1.2">STAGE 6  bundle</text>
+
+  <rect x="740" y="452" width="200" height="72" rx="3" fill="none" stroke="#0E5D6E" stroke-width="2.2"></rect>
+  <text x="840" y="474" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="600" fill="#0E5D6E">models/forecaster</text>
+  <text x="840" y="491" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E" opacity="0.9">PriceForecaster</text>
+  <text x="840" y="505" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E" opacity="0.9">PriceForecasterModel</text>
+  <text x="840" y="518" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#0E5D6E" opacity="0.7">(pyfunc)</text>
+
+  <!-- cascade -> forecaster : bundles fitted state -->
+  <path d="M 764 268 H 900 V 448" fill="none" stroke="#A9541F" stroke-width="2" marker-end="url(#mg-warm)"></path>
+  <text x="888" y="300" text-anchor="end" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">bundles the</text>
+  <text x="888" y="313" text-anchor="end" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#A9541F">fitted cascade</text>
+
+  <!-- ============ MLflow ============ -->
+  <rect x="268" y="556" width="300" height="60" rx="3" fill="none" stroke="#131B1E" stroke-width="1.8"></rect>
+  <text x="418" y="578" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#131B1E">MLflow tracking + registry</text>
+  <text x="418" y="595" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#131B1E" opacity="0.7">sqlite:///mlflow.db · mlartifacts/</text>
+  <text x="418" y="609" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#131B1E" opacity="0.7">nested runs · v1 registered</text>
+
+  <line x1="236" y1="586" x2="264" y2="586" stroke="#0E5D6E" stroke-width="1.6" marker-end="url(#mg-acc)"></line>
+
+  <!-- forecaster -> mlflow -->
+  <path d="M 840 528 C 840 578 700 592 574 588" fill="none" stroke="#0E5D6E" stroke-width="2" marker-end="url(#mg-acc)"></path>
+  <text x="700" y="558" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8.5" fill="#0E5D6E">log_model(code_paths=["src"])</text>
+
+  <!-- analysis -> mlflow artifacts -->
+  <line x1="358" y1="510" x2="358" y2="552" stroke="#8B9C9F" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#mg-faint)"></line>
+  <path d="M 560 510 C 545 530 530 544 520 552" fill="none" stroke="#8B9C9F" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#mg-faint)"></path>
+  <text x="466" y="537" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="8" fill="#8B9C9F">artifacts</text>
+
+  <!-- ============ legend ============ -->
+  <rect x="20" y="556" width="16" height="3" fill="#0E5D6E"></rect>
+  <text x="44" y="562" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E">orchestration</text>
+  <rect x="20" y="578" width="16" height="3" fill="#A9541F"></rect>
+  <text x="44" y="584" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E">the cascade</text>
+  <rect x="20" y="600" width="16" height="3" fill="#8B9C9F"></rect>
+  <text x="44" y="606" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E">validates / logs into</text>
+</svg>

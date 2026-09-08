@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 268" role="img" aria-label="Comparison: in the notebook each forecast call refits the cascade and the price model before predicting. In production, fitting happens once offline and the request path only simulates and predicts, removing the training edge from the request.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="#131B1E"></polygon>
+            </marker>
+            <marker id="ar2-warm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="#A9541F"></polygon>
+            </marker>
+            <marker id="ar2-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="#0E5D6E"></polygon>
+            </marker>
+          </defs>
+
+          <!-- NOTEBOOK -->
+          <text x="16" y="26" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#A9541F" letter-spacing="1.4">NOTEBOOK · PER REQUEST</text>
+          <rect x="16" y="40" width="868" height="72" rx="4" fill="none" stroke="#A9541F" stroke-width="1" stroke-dasharray="3 4" opacity="0.6"></rect>
+
+          <rect x="34" y="58" width="104" height="36" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="86" y="81" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#131B1E">request</text>
+
+          <rect x="186" y="58" width="140" height="36" rx="3" fill="none" stroke="#A9541F" stroke-width="1.8"></rect>
+          <text x="256" y="81" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#A9541F">fit cascade</text>
+
+          <rect x="374" y="58" width="150" height="36" rx="3" fill="none" stroke="#A9541F" stroke-width="1.8"></rect>
+          <text x="449" y="81" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#A9541F">fit price model</text>
+
+          <rect x="572" y="58" width="120" height="36" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="632" y="81" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#131B1E">simulate</text>
+
+          <rect x="740" y="58" width="120" height="36" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="800" y="81" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#131B1E">predict</text>
+
+          <line x1="140" y1="76" x2="182" y2="76" stroke="#131B1E" stroke-width="1.3" marker-end="url(#ar2)"></line>
+          <line x1="328" y1="76" x2="370" y2="76" stroke="#A9541F" stroke-width="1.8" marker-end="url(#ar2-warm)"></line>
+          <line x1="526" y1="76" x2="568" y2="76" stroke="#A9541F" stroke-width="1.8" marker-end="url(#ar2-warm)"></line>
+          <line x1="694" y1="76" x2="736" y2="76" stroke="#131B1E" stroke-width="1.3" marker-end="url(#ar2)"></line>
+
+          <!-- divider -->
+          <line x1="16" y1="136" x2="884" y2="136" stroke="#131B1E" stroke-width="1" opacity="0.35"></line>
+
+          <!-- PRODUCTION -->
+          <text x="16" y="164" font-family="DejaVu Sans, sans-serif" font-size="10.5" fill="#0E5D6E" letter-spacing="1.4">PRODUCTION · FITTING MOVED OFFLINE</text>
+
+          <!-- offline box -->
+          <rect x="186" y="178" width="338" height="72" rx="4" fill="none" stroke="#131B1E" stroke-width="1" stroke-dasharray="5 3" opacity="0.6"></rect>
+          <text x="196" y="243" font-family="DejaVu Sans, sans-serif" font-size="9.5" fill="#131B1E" opacity="0.7">OFFLINE · TRAINING JOB</text>
+
+          <rect x="200" y="190" width="140" height="36" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="270" y="213" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#131B1E">fit cascade</text>
+
+          <rect x="360" y="190" width="150" height="36" rx="3" fill="none" stroke="#131B1E" stroke-width="1.3"></rect>
+          <text x="435" y="213" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#131B1E">fit price model</text>
+
+          <!-- request path -->
+          <rect x="34" y="190" width="104" height="36" rx="3" fill="none" stroke="#0E5D6E" stroke-width="1.8"></rect>
+          <text x="86" y="213" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#0E5D6E">request</text>
+
+          <rect x="572" y="190" width="120" height="36" rx="3" fill="none" stroke="#0E5D6E" stroke-width="1.8"></rect>
+          <text x="632" y="213" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#0E5D6E">simulate</text>
+
+          <rect x="740" y="190" width="120" height="36" rx="3" fill="none" stroke="#0E5D6E" stroke-width="1.8"></rect>
+          <text x="800" y="213" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="600" fill="#0E5D6E">predict</text>
+
+          <!-- request bypasses fitting -->
+          <path d="M 138 200 C 300 158 430 158 568 200" fill="none" stroke="#0E5D6E" stroke-width="1.8" marker-end="url(#ar2-acc)"></path>
+          <text x="353" y="156" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10" fill="#0E5D6E">loads fitted bundle, skips fitting</text>
+
+          <line x1="694" y1="208" x2="736" y2="208" stroke="#0E5D6E" stroke-width="1.8" marker-end="url(#ar2-acc)"></line>
+        </svg>
