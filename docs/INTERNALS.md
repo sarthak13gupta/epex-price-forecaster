@@ -2439,7 +2439,303 @@ rather than merely logged.
 
 ---
 
-## 13. Cross-cutting decisions
+## 13. Testing and CI
+
+### `tests/` (531 lines, 53 tests)
+
+**Function flow**
+
+```
+The suite is organised around a single rule: assert CONTRACTS, never RESULTS.
+A leaking backtest reports a BETTER score, not a worse one, so the failures
+worth catching are the ones that look like success.
+
+pytest                                          pytest.ini: pythonpath=.
+│                                               so `src` imports without install
+├─ conftest.py                                  session-scoped fixtures
+│    ├─ config()                ─► load_config()          the REAL config,
+│    │                                                    not a stub — these
+│    │                                                    invariants are
+│    │                                                    config-driven
+│    ├─ synthetic_processed()   ─► 3y daily frame, seasonal price + drivers
+│    │     ▲
+│    │     └─ 3 years because a 731-day window plus a test month must fit.
+│    │        Session-scoped and read-only: every consumer in src/ copies
+│    │        before mutating, so it is built once.
+│    │
+│    └─ synthetic_static()      ─► build_static_features(synthetic_processed)
+│          ▲
+│          └─ mirrors what train_pipeline hands to prepare_folds: calendar
+│             flags and residual-demand polynomials present, thermal
+│             features ABSENT because those are fold-dependent
+│
+├─ test_stage_ordering.py                                          5 tests
+│    ├─ engineer_degree_days(raw, ["T_lisse"], config)
+│    │      └─ ──► KeyError "engineer_national_temperature must run first"
+│    │             ◄── the original migration defect, now pinned
+│    ├─ engineer_national_temperature() THEN engineer_degree_days()
+│    │      └─ T_lisse_HDD / T_lisse_CDD present and non-negative
+│    ├─ (HDD > 0) & (CDD > 0) is never true       the 15-22 C dead zone
+│    ├─ get_feature_names() ordering stable       baked into the artifact
+│    └─ feature_set="nope" ──► ValueError
+│
+├─ test_fold_leakage.py                                            7 tests
+│    └─ prepare_folds(synthetic_static, ..., 2-fold schedule)
+│         │   ▲
+│         │   └─ the REAL function, not a reimplementation. Fits the whole
+│         │      cascade twice, so this doubles as a feature-pipeline
+│         │      integration smoke test — and is the slowest file for it
+│         │
+│         ├─ fold.train_end < fold.test_start
+│         ├─ X_train.index ∩ X_test.index == ∅
+│         ├─ (train_end - train_start).days + 1 == train_window_days
+│         ├─ folds advance monotonically           rolling origin never revisits
+│         ├─ X_train/X_test columns == get_feature_names(), no NaNs
+│         └─ schedule beyond the data ──► ValueError "has no data"
+│                                          ◄── not a silent zero-row return
+│
+├─ test_horizon_guards.py                                          7 tests
+│    └─ PriceForecaster(cascade=None, price_model=None, metadata=...)
+│         │   ▲
+│         │   └─ _validate_horizon reads ONLY metadata, so the two heavy
+│         │      stages are None. No fitting; the file runs in ~1s
+│         │
+│         ├─ earliest_forecast_date == train_end + 1 day
+│         ├─ horizon == max_horizon_days            accepted
+│         ├─ horizon == max_horizon_days + 1  ──► ValueError
+│         ├─ start inside the training window ──► ValueError
+│         ├─ start == train_end               ──► ValueError   off-by-one
+│         └─ start later than earliest        accepted   cascade extrapolates
+│
+├─ test_api_schemas.py                                            10 tests
+│    └─ ForecastRequest(start_date, nuclear_avail)
+│         ├─ [29.0, 30.0]        ──► ValidationError "not GW"
+│         │                          ◄── the realistic error, not the obvious
+│         │                              one: passes every null and type check
+│         ├─ [30000.0, nan]      ──► "is NaN"
+│         ├─ [-1000.0]           ──► "outside the plausible range"
+│         ├─ [MAX + 1.0]         ──► "outside the plausible range"
+│         ├─ []                  ──► ValidationError   min_length=1
+│         ├─ [MIN, MAX]              accepted          edges are inclusive
+│         └─ [30000, 30000, 29]  ──► "nuclear_avail[2]"   names the index
+│
+├─ test_api_degraded.py                                            5 tests
+│    └─ monkeypatch main.load_model ─► raises;  TestClient(main.app)
+│         │   ▲
+│         │   └─ forces the modelless state EXPLICITLY rather than relying on
+│         │      CI having no registry, so it behaves identically on a
+│         │      developer machine that does have one
+│         │
+│         ├─ GET /health      ──► 503   never a bare 200
+│         ├─ POST /predict    ──► 503   "cannot serve forecasts"
+│         ├─ GET /model-info  ──► 503
+│         ├─ POST /predict with [29.0] ──► 422
+│         │      ◄── validation runs BEFORE the model is consulted: the client
+│         │          must learn its payload is wrong regardless of server state
+│         └─ GET /openapi.json ──► 200   response-model errors surface only here
+│
+└─ test_imports.py                                                19 tests
+     ├─ 13 API-path modules              plain import
+     ├─  2 training modules              importorskip("optuna")
+     ├─  3 UI modules                    importorskip("streamlit")
+     │      ▲
+     │      └─ the guards are what let the SAME suite run against the slim
+     │         serving dependency set, which is how the optuna defect below
+     │         was found
+     └─ app.routes contains /health /model-info /predict /backtest-metrics
+```
+
+**Why this file set exists.** Every "why" in this document is an assertion about
+behaviour. Before `tests/`, none was enforced, and a refactor could silently
+reintroduce the degree-day ordering defect that made the migrated code
+non-functional.
+
+#### What is asserted, and what is deliberately not
+
+- **Why contracts, not accuracy.** A test asserting `mae < 9.0` pins a *result*.
+  Results move when data, folds or hyperparameters move; the test then fails for
+  reasons that are not bugs, gets marked `xfail`, and stops meaning anything.
+  Worse, the failure mode this project actually has — leakage — makes the score
+  *better*, so an accuracy threshold would pass a leaking pipeline. Accuracy
+  belongs to the walk-forward backtest, which needs the real dataset.
+- **Why the real config rather than a fixture stub.** The invariants under test
+  are config-driven: the HDD/CDD reference, the 22-name feature order, the
+  731-day window, the 31-day horizon cap. A stub would test the stub.
+- **Why synthetic data rather than a sample of the real CSVs.** No credentials,
+  no licence question, no 2 MB fixture in git, and the frame is generated
+  deterministically from a seeded RNG. Only the schema and the date index matter
+  for a structural invariant.
+- **Alternative considered — `hypothesis` property tests.** Attractive for the
+  degree-day complementarity property in particular. Not adopted: the invariants
+  here are few and specific, and a failing example from a property test is
+  harder to read than a named test. Worth revisiting if the feature set grows.
+
+#### `PriceForecaster(cascade=None, price_model=None, ...)`
+
+- **Why constructing an intentionally half-built object is acceptable here.**
+  `_validate_horizon` reads `self.metadata` and nothing else, so the two
+  expensive stages are unnecessary. Fitting a real cascade to test a date
+  comparison would turn a 1-second file into a 30-second one and couple the
+  horizon tests to feature-engineering correctness.
+- **The risk, and why it is bounded.** If `_validate_horizon` ever starts
+  touching `self.cascade`, these tests fail with `AttributeError` on `None`
+  rather than passing vacuously. A failure that loud is an acceptable guard.
+
+---
+
+### `.github/workflows/ci.yml`
+
+**Job flow**
+
+```
+push / pull_request
+│
+├─ secrets ────────────────────────────────── independent, fails fast
+│    ├─ git ls-files for .env *.pem *.key mlflow.db *.bak
+│    │      └─ any match ──► ::error:: and exit 1
+│    └─ git grep for AKIA ids, assigned secret keys, PRIVATE KEY blocks
+│           ▲
+│           └─ scans the TREE, not the diff, so it also catches anything
+│              committed before the local hook existed
+│
+├─ tests (serve)   pip install -r requirements-api.txt -r requirements-test.txt
+│    │   ▲
+│    │   └─ THE JOB THAT KEEPS THE REQUIREMENTS SPLIT HONEST. A training-only
+│    │      import leaking into the serving path fails here while
+│    │      tests (full) still passes. This is how the optuna defect surfaced.
+│    └─ pytest -v          expect 48 passed, 5 skipped
+│
+├─ tests (full)    pip install -r requirements.txt -r requirements-test.txt
+│    └─ pytest -v          expect 53 passed, 0 skipped
+│
+└─ images                  needs: [secrets, tests]
+     ├─ build :serve    REQUIREMENTS=requirements-api.txt   cache scope=serve
+     ├─ build :ui       REQUIREMENTS=requirements-ui.txt    cache scope=ui
+     │      ▲
+     │      └─ load: true, not push — the smoke step must run the image that
+     │         was just built, not a registry copy of something else
+     │
+     └─ docker run -p 18000:8000 epex-forecaster:serve
+          │   ▲
+          │   └─ 18000, NOT 8000. A host process bound to 127.0.0.1:8000 wins
+          │      over Docker's 0.0.0.0:8000 proxy for loopback traffic, so a
+          │      curl to :8000 can answer from the HOST. That is not a
+          │      hypothetical — see CORRECTIONS.md finding 17.
+          │
+          ├─ poll /health up to 60s
+          │    ├─ 503 ─► PASS   expected: no registry in CI, and the API is
+          │    │                designed to capture a load failure and start
+          │    │                unhealthy rather than raise
+          │    ├─ 200 ─► PASS   a model was somehow available
+          │    └─ neither ─► ::error:: + docker logs + exit 1   crash-loop
+          │
+          ├─ /openapi.json parses and contains /predict
+          │      └─ response-model misconfiguration surfaces only at render
+          │
+          └─ docker exec id -u  != 0
+                 └─ else ::error:: container runs as root
+```
+
+- **Why a 503 is a passing result.** A service that reports healthy with no
+  model is worse than one plainly down, because an orchestrator would route
+  traffic to it. The smoke test therefore accepts "correctly unhealthy" and
+  rejects both a crash-loop and a bare 200.
+- **Why two dependency sets rather than one.** The slim `:serve` image exists to
+  keep the inference surface small; without a job that runs against exactly that
+  set, the claim decays silently. It decayed once already.
+- **Why `ENV: local` is set workflow-wide and no AWS credentials exist.** Nothing
+  in CI should be able to reach the real bucket, and the cheapest way to
+  guarantee that is to give it no way to try.
+- **Alternative considered — `act` for local runs.** Useful, not adopted: the
+  two claims worth verifying locally (the slim set runs the suite; the container
+  boots degraded) are both reproducible with plain `docker run`, documented in
+  `CI.md`.
+
+---
+
+### `.github/workflows/publish.yml`
+
+**Job flow**
+
+```
+push tag v*  |  workflow_dispatch
+│
+├─ preflight                                    ALWAYS runs
+│    └─ AWS_ROLE_ARN, AWS_REGION, ECR_REPOSITORY all set?
+│         ├─ yes ─► configured=true  + summary "Publishing enabled"
+│         └─ no  ─► configured=false + summary explaining WHICH to set
+│                      ▲
+│                      └─ a bare skipped job is indistinguishable from a
+│                         broken one; this makes the reason visible
+│
+└─ build-push (matrix: serve, ui)     if: configured == 'true'
+     │                                permissions: id-token: write
+     ├─ configure-aws-credentials with role-to-assume
+     │      ▲
+     │      └─ OIDC: GitHub mints a short-lived token per run, AWS trades it
+     │         for temporary credentials. No key is stored as a secret — which
+     │         matters concretely, because this repo's .env holds a real pair
+     │
+     ├─ amazon-ecr-login  ─► registry host
+     └─ build-push-action  push: true
+          ├─ tag :<target>              moves
+          └─ tag :<target>-<sha>        immutable ── PIN DEPLOYMENTS TO THIS
+                 └─ rollback becomes "name the previous SHA"
+```
+
+- **Why repository variables rather than secrets.** A role ARN is not a
+  credential, and keeping it visible makes the wiring auditable. The only
+  sensitive component is the account id, which is why it lives in a variable
+  instead of committed in the workflow.
+- **Why the whole thing is gated instead of assumed configured.** A fresh clone
+  must have a green CI without an AWS account.
+
+---
+
+### `infra/host/git-hooks/pre-commit`
+
+**Flow**
+
+```
+git commit
+│
+├─ staged = git diff --cached --name-only --diff-filter=ACM
+│
+├─ by NAME:  .env* (except .env.example) | *.pem *.key | mlflow.db* | *.bak *.orig
+│      ▲
+│      └─ name check first, because `git add -f` bypasses .gitignore SILENTLY
+│         and the hook must not care how the file got staged
+│
+├─ by CONTENT, on ADDED LINES only, skipping binary/base64-bearing types:
+│      ├─ AKIA[0-9A-Z]{16}
+│      ├─ secret_access_key = <20+ chars>        an assignment, not a mention
+│      └─ BEGIN ... PRIVATE KEY
+│             ▲
+│             └─ .png .jpg .svg .docx .parquet .ipynb are skipped: a base64
+│                image matches almost any entropy pattern
+│
+└─ any hit? ──► exit 1 with the unstage command for BOTH cases
+                  ├─ git restore --staged <file>
+                  └─ git rm --cached <file>       before the first commit
+                         ▲
+                         └─ git restore --staged needs a HEAD; on an empty
+                            repository it fails with "could not resolve HEAD".
+                            Found the hard way while testing this hook.
+```
+
+- **Why a hook AND a CI job.** A hook protects only whoever installed it, and
+  `git commit --no-verify` skips it. The CI job runs server-side where neither
+  is true. Neither replaces `.gitignore`, which remains the primary control.
+- **Why `core.hooksPath` rather than copying into `.git/hooks`.** The hook stays
+  version-controlled, so a fix arrives with the next pull instead of needing a
+  re-copy on every clone.
+- **Why this is proportionate rather than paranoid.** `.env` in this repository
+  holds a live AWS key pair. The cost of the control failing once is a
+  force-push plus a key rotation, not an edit.
+
+---
+
+## 14. Cross-cutting decisions
 
 | Decision | Rationale | Alternative not taken |
 |---|---|---|

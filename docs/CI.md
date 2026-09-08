@@ -173,6 +173,9 @@ explanation moved to `infra/iam/README.md`.
 
 ## Running it locally
 
+Everything in this section, plus the non-CI commands, is collected in
+[`RUNBOOK.md`](RUNBOOK.md).
+
 ```bash
 pip install -r requirements-dev.txt
 pytest                      # 53 tests, ~2s

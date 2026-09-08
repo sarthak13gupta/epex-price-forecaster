@@ -19,7 +19,7 @@ Companion to `DESIGN.md` (architecture), `INTERNALS.md` (code walkthrough),
 
 | # | Step | Status | Tooling here |
 |---|---|---|---|
-| 1 | Data ingestion & access | 🟡 Partial | `data_loader.py`, `ENV` toggle, S3 path untested |
+| 1 | Data ingestion & access | 🟢 Built | `data_loader.py`, `ENV` toggle, **both paths verified** |
 | 2 | Data validation | 🟢 Built | pandera, three schemas |
 | 3 | Data & feature versioning | 🔴 Absent | — |
 | 4 | Feature engineering | 🟢 Built | `build_features.py`, `ExogenousCascade` |
@@ -28,16 +28,18 @@ Companion to `DESIGN.md` (architecture), `INTERNALS.md` (code walkthrough),
 | 7 | Evaluation & release gating | 🟡 Partial | Walk-forward + leaderboard; **no gate** |
 | 8 | Model packaging | 🟢 Built | `mlflow.pyfunc` + `code_paths` |
 | 9 | Model registry & promotion | 🟡 Partial | Registry v1; **no aliases, no promotion rule** |
-| 10 | Serving | 🟡 Partial | **FastAPI built** (4 endpoints, tested); Streamlit not written |
+| 10 | Serving | 🟢 Built | FastAPI (4 endpoints) + Streamlit (3 tabs), both containerised |
 | 11 | Monitoring & drift | 🔴 Absent | — |
 | 12 | Continuous training | 🔴 Absent | Manual invocation only |
-| 13 | CI/CD | 🔴 Absent | No tests, no pipeline |
+| 13 | CI/CD | 🟢 Built | 53 tests; GitHub Actions: secret scan, 2 dependency sets, image smoke |
 | 14 | Reproducibility & lineage | 🟡 Partial | Config + seeds + pinned deps; no data version |
 | 15 | Explainability & governance | 🟢 Built | SHAP, dual explainer, logged artifacts |
 
-Six built, four partial, five absent. That distribution is normal for a project
-that has prioritised the modelling core; the absent items are concentrated in
-operations, which is exactly what `ASSESSMENT.md` Tier 1 addresses.
+Nine built, two partial, four absent. The four remaining absences — data
+versioning, monitoring, continuous training, and a release gate — are all
+*operational* rather than modelling gaps, and each needs the system to be
+running unattended before it means anything. They are scoped in
+`ROADMAP.md`.
 
 ---
 
@@ -654,29 +656,76 @@ so the *code* is retrain-ready — only the trigger is missing.
 promotion of artifacts (CD). For ML it extends beyond unit tests to data
 contracts and model quality.
 
-**Why it exists.** Every "why" in `INTERNALS.md` is an assertion about behaviour;
-none is currently enforced. A refactor can silently reintroduce the degree-day
-ordering bug that made the migrated code non-functional.
+**Why it exists.** Every "why" in `INTERNALS.md` is an assertion about
+behaviour. Unenforced, a refactor can silently reintroduce the degree-day
+ordering bug that made the migrated code non-functional. The ML-specific twist
+is that the worst failure — leakage — makes the reported score *better*, so it
+cannot be caught by watching metrics.
 
-**In this project.** 🔴 **Absent.** No `tests/`, no `.github/`, no pre-commit.
+**In this project.** 🟢 **Built.** `tests/` (53 tests, ~2 s) and two GitHub
+Actions workflows. Full low-level detail in `INTERNALS.md` §13; the reasoning
+and the bugs it found in `CI.md`.
 
-**On AWS / future.** Three tests earn their keep immediately:
+The three tests this document previously listed as "earning their keep
+immediately" all exist now:
 
-1. **Stage ordering** — degree days cannot be built before national temperature.
-   `engineer_degree_days` must raise when `T_lisse` is absent.
-2. **Horizon guards** — a request before `train_end + 1` or beyond
-   `max_horizon_days` must raise.
-3. **A leakage assertion** — for every fold, no feature value may depend on data
-   after that fold's `train_end`. This test is itself interview material.
+| Was proposed | Now |
+|---|---|
+| Stage ordering — degree days cannot precede national temperature | `test_stage_ordering.py`, 5 tests, including the dead-zone property |
+| Horizon guards — before `train_end + 1` or beyond `max_horizon_days` must raise | `test_horizon_guards.py`, 7 tests, including the `train_end` off-by-one |
+| A leakage assertion — no feature may depend on data after its fold's `train_end` | `test_fold_leakage.py`, 7 tests, against the **real** `prepare_folds` |
 
-Then:
-- **GitHub Actions**: lint (`ruff`), type-check (`mypy`), unit tests, and a
-  smoke-test pipeline run with `--skip-tuning --skip-shap --no-register` on a
-  data sample.
-- **Build and push images to ECR** on merge to main.
-- **CodeDeploy or a compose pull** on the EC2 host for delivery.
-- Dependencies are already fully pinned (34 of 34 with `==`), which is half of
-  reproducible CI.
+Two further areas turned out to matter as much:
+
+- **Request unit validation** (`test_api_schemas.py`). The realistic failure is
+  not a missing field but 29 GW submitted as `29` — which passes every null and
+  type check, then drives residual demand deeply negative.
+- **Graceful degradation** (`test_api_degraded.py`). With no model, `/health`
+  must return 503 rather than a bare 200, while a malformed payload must still
+  get 422, because the client needs to know its request is wrong regardless of
+  server state.
+
+**The CI pipeline** runs three jobs: a secret scan, the suite against **two
+dependency sets**, and an image build plus container smoke test. The
+two-dependency-set design is the ML-specific part worth naming — the slim
+serving environment exists to keep the inference surface small, and without a
+job that runs against exactly that set, the claim decays silently. It had
+already decayed: `registry.py` imported `optuna` at module scope, so a
+`Baseline_Seasonal` champion could not have been loaded by the serving image at
+all.
+
+**What is deliberately NOT in CI.** Stated plainly, because an untested area you
+know about differs from one you do not:
+
+| Not in CI | Why |
+|---|---|
+| Model accuracy thresholds | Pins a result, not a contract; fails for reasons that are not bugs; and would pass a leaking pipeline |
+| A training-pipeline run | Minutes of compute and it needs the real CSVs |
+| S3 read/write | No credentials in CI by design; `S3Store` is gated on `ENV` **and** a bucket, so it is inert |
+| Rendered Streamlit output | `AppTest` could cover it; today CI builds the `:ui` image and imports `src.ui.app` |
+| `ruff` / `mypy` | Neither is configured for this project yet — see `ROADMAP.md` |
+
+**CD** is half-built. `publish.yml` pushes `:serve` and `:ui` to ECR on a `v*`
+tag, authenticating by **OIDC** rather than a stored key — GitHub mints a
+short-lived token per run and AWS trades it for temporary credentials. Images
+carry both a moving tag and an immutable `-<sha>` tag, so a rollback is naming
+the previous commit. What is missing is the delivery half: nothing yet pulls
+that image onto a host.
+
+**On AWS / future.**
+
+- **A release gate** (Step 7) is the highest-value addition: fail the pipeline if
+  the champion candidate is not better than the incumbent by a
+  Diebold-Mariano-significant margin. The DM machinery already exists; it is not
+  yet wired into the pipeline.
+- **Delivery**: an SSM Run Command or CodeDeploy step that pulls the new
+  `-<sha>` tag on the EC2 host and restarts the compose stack.
+- **`ruff` and `mypy` jobs** — cheap, and the codebase is already annotated.
+- **A scheduled smoke run** of `--skip-tuning --skip-shap --no-register` against
+  a data sample, which would catch pipeline rot that unit tests cannot.
+- Dependencies are fully pinned with `==` — 24 direct application packages
+  across the four service sets, plus 2 test tools — which is half of
+  reproducible CI already done.
 
 ---
 

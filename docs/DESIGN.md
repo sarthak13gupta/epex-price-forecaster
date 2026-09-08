@@ -20,7 +20,8 @@ and the eight defects that surfaced on the way.
 What is implemented versus designed, as of the latest run. Low-level detail for
 each component is in `INTERNALS.md`; the AWS services are explained from first
 principles in `AWS_S3_EC2.md`, the container setup in `DOCKER.md`, and the test
-suite and pipelines in `CI.md`.
+suite and pipelines in `CI.md`. **`RUNBOOK.md` is how to run all of it**, and
+**`ROADMAP.md` is what is left.**
 
 | Component | Status | Where |
 |---|---|---|
@@ -516,6 +517,10 @@ day.
 ---
 
 ## 10. Open questions and known gaps
+
+> These are the *modelling* gaps. The full status list — including deployment,
+> the four account actions everything waits on, and what "done" would mean — is
+> in `ROADMAP.md`.
 
 - **The `year` feature** — see §7. The single highest-value modelling decision
   outstanding, and a prerequisite for trusting this model beyond 2020.

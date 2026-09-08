@@ -224,7 +224,7 @@ STEP 4  Validate before building
 
 STEP 5  Build
         docker compose build api            ✅ all layers
-        ▲ libgomp1 worked; all 34 pinned deps installed as wheels,
+        ▲ libgomp1 worked; every pinned dep installed as a wheel,
           nothing compiled from source
 
 STEP 6  Smoke-test imports inside the container
@@ -302,37 +302,70 @@ cause rather than crash-looping — the deliberate design choice in
 | Check | Result |
 |---|---|
 | Docker / Compose | 29.2.1 / v5.0.2 |
-| `docker compose config` | valid; only `api` + `mlflow` default |
+| `docker compose config` | valid; 4 services, only `api` + `mlflow` start by default |
 | Build | all layers; `libgomp1` present, XGBoost imports |
-| 34 pinned deps on `python:3.12-slim` | no wheel compiled from source |
+| Pinned deps on `python:3.12-slim` | no wheel compiled from source. 24 direct application pins (16 for the API set); 102 packages resolved in `:serve` |
 | Runs as non-root | uid 1000 (or `$HOST_UID`) |
 | `docker compose up api` | **healthy** |
 | `/predict` in-container | **33.81 / 33.68 / 33.36 — identical to host** |
 | `/predict` error path | GW unit error → 422 |
-| Image size | **1.64 GB** (from 2.65 GB) |
+| Degraded boot (no registry) | **503 with an actionable message**, not a crash-loop |
+| Suite inside `:serve` | **48 passed, 5 skipped** — the skips are the training/UI guards |
+| `:ui` image | **built and verified** — Streamlit CLI reachable, `src.ui.app` imports |
+| Image build in CI | both targets, GHA layer cache, container smoke test |
 
-### Open: split requirements per service
+### Image inventory (measured)
 
-The API image still carries training-only dependencies:
+Two size figures get confused constantly, so both are given. `docker image ls`
+reports the **uncompressed on-disk** size; what a registry pull actually
+transfers is the **compressed** content, which `docker image inspect --format
+'{{.Size}}'` reports under the overlayfs snapshotter.
 
-| Package | Size | Pulled in by | API needs it? |
-|---|---|---|---|
-| `llvmlite` | 171 MB | `numba` ← `shap` | no |
-| `pyarrow` | 149 MB | parquet I/O | **yes** |
-| `plotly` | 39 MB | Streamlit UI | no |
-| `streamlit` | 30 MB | UI service | no |
-| `statsmodels` | ~30 MB | notebook EDA only | no |
-| `optuna` | small | tuning | no |
+| Tag | Requirements | On disk | Compressed | Role |
+|---|---|---|---|---|
+| `:serve` | `requirements-api.txt` | **1.17 GB** | ~283 MB | API + MLflow server |
+| `:ui` | `requirements-ui.txt` | **1.34 GB** | ~312 MB | Streamlit |
+| `:latest` | `requirements.txt` | **1.64 GB** | — | Training; the "can do everything" image |
 
-Splitting into `requirements-base/api/train.txt` would remove roughly **270 MB**
-more from the serving image. This is the per-service-image recommendation in
-`MLOPS.md` step 10, and it matters for the AWS free tier where `t3.micro` ships
-an 8 GiB EBS volume by default.
+Down from a single 2.65 GB image. Two changes got there: removing
+`nvidia-nccl-cu13` (288 MB, pulled transitively by `xgboost` but used only for
+multi-GPU collectives) **in the same layer as the install**, and splitting
+requirements per service.
 
-**The tension to be aware of:** separate images reintroduce the version-drift
-risk that one image was chosen to eliminate. The safe form is a **shared
-`requirements-base.txt` with pinned versions**, plus thin per-service additions —
-never independently resolved dependency sets.
+### Resolved: split requirements per service
+
+This section previously listed the split as open. It is done, and verified:
+`requirements-base.txt` holds the 12 shared pins, with `api`, `train` and `ui`
+adding thin layers on top and `requirements.txt` as their union. Zero duplicate
+pins across 26 packages, checked mechanically.
+
+The tension flagged at the time — that separate images reintroduce the
+version-drift risk one image was chosen to eliminate — is handled structurally:
+every service inherits the same pinned `requirements-base.txt`, so no set is
+ever independently resolved.
+
+**And it earned its keep immediately.** CI runs the test suite against the slim
+`api` set as well as the full one, and that job caught a latent defect the full
+job could not see: `src/models/registry.py` imported `optuna` at module scope.
+`optuna` is a training dependency, but `registry` is on the *serving* path
+because `NaiveForecaster` is defined there — so a `Baseline_Seasonal` champion
+**could not have been loaded by the `:serve` image at all**. See `CI.md` and
+`CORRECTIONS.md` finding 16.
+
+### Still open
+
+- **The `:ui` image carries `mlflow`, and nothing under `src/ui/` imports it.**
+  `requirements-ui.txt` inherits `requirements-base.txt`, which pins full
+  `mlflow` — and `mlflow` is what drags `matplotlib` and `fastapi` into the UI
+  image. Moving the UI to `mlflow-skinny`, or dropping mlflow from its set
+  entirely, should take a few hundred MB off. Measured, not yet acted on
+  (`CORRECTIONS.md` item 16b).
+- **Docker Desktop is still the engine on this host.** `/usr/bin/docker` is a
+  symlink into `/mnt/wsl/docker-desktop/cli-tools/`, so the CLI vanishes when
+  Desktop stops rather than failing to connect. `infra/host/install-docker-engine.sh`
+  installs a native engine managed by systemd; it needs a `sudo` run.
+- **Nothing pulls an image onto a host yet.** `publish.yml` pushes to ECR; the
+  delivery half is unbuilt. See `ROADMAP.md`.
 
 ---
 
@@ -353,7 +386,7 @@ docker compose down                    # stop and remove
 docker compose exec api bash                       # shell into a running container
 docker run --rm epex-forecaster:latest python -c "import xgboost"
 docker compose --profile train run --rm train      # one training run, then exit
-docker compose --profile ui up -d ui               # once src/ui/app.py exists
+docker compose --profile ui up -d ui               # Streamlit on :8501
 
 # --- inspection -------------------------------------------------------------
 docker images epex-forecaster

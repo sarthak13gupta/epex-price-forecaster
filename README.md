@@ -135,6 +135,9 @@ p < 0.0001 for every pair, so this is not a lucky draw.
 
 ## Quickstart
 
+Full instructions, including troubleshooting, are in
+[`docs/RUNBOOK.md`](docs/RUNBOOK.md). The short version:
+
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
@@ -218,6 +221,8 @@ serving image at all**. Details in [`docs/CI.md`](docs/CI.md).
 
 | Doc | Contents |
 |---|---|
+[`docs/RUNBOOK.md`](docs/RUNBOOK.md) | **How to run everything**, and what to do when each step fails |
+[`docs/ROADMAP.md`](docs/ROADMAP.md) | **What is left**, ordered, and which items are blocked on an account action |
 [`docs/DESIGN.md`](docs/DESIGN.md) | High-level design, results, defects found and fixed |
 [`docs/INTERNALS.md`](docs/INTERNALS.md) | Low-level design, 18 module sections, 15 flowcharts |
 [`docs/CI.md`](docs/CI.md) | Test suite and pipelines, and the bugs they found |
@@ -249,7 +254,10 @@ that survived scrutiny and findings that did not are both in there.
 | ECR publish | ✅ Built, awaiting the OIDC role |
 | EC2 deployment | ⬜ Not deployed |
 
-Open modelling work is tracked in `docs/DESIGN.md` §10 and `docs/CORRECTIONS.md`.
+The one-line summary: **the system is complete and tested, but it has never run
+anywhere except one laptop.** Closing that is the top of
+[`docs/ROADMAP.md`](docs/ROADMAP.md), which also lists the four account actions
+everything else waits on.
 
 ## Security
 

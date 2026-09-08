@@ -782,14 +782,16 @@ from the environment.
 instance. No code change is needed at that point — which is the whole benefit
 of resolving credentials through the chain.
 
-### ✅ 5. Containerise — DONE (not yet built)
+### ✅ 5. Containerise — DONE (built and verified)
 
 - `DockerFile` → **`Dockerfile`**: `python:3.12-slim`, `PYTHONUNBUFFERED=1`,
   `libgomp1` for XGBoost's OpenMP runtime, non-root `app` user, requirements
   cached as their own layer.
-- **`docker-compose.yml`**: four services from one image — `api`, `ui`,
-  `mlflow`, `train` — differing only by command. `ui` and `train` sit behind
-  compose **profiles** so they do not start by default.
+- **`docker-compose.yml`**: four services from **two** images — `api` and
+  `mlflow` share `:serve` (`requirements-api.txt`), `ui` uses `:ui`, and
+  `train` uses the full `:latest`. `ui` and `train` sit behind compose
+  **profiles** so they do not start by default. All three targets are built:
+  1.17 / 1.34 / 1.64 GB on disk, down from a single 2.65 GB image.
 - Ports bound to **`127.0.0.1`**, not `0.0.0.0`. On EC2 only Nginx on :443
   faces the internet.
 - Healthcheck hits `/health`, which asserts the **model loaded** rather than
@@ -807,7 +809,7 @@ of resolving credentials through the chain.
 |---|---|
 | `docker compose config` | valid; only `api` + `mlflow` in the default profile |
 | Image build | all layers; `libgomp1` present so XGBoost imports |
-| All 34 pinned deps on `python:3.12-slim` | no wheel built from source |
+| All pinned deps on `python:3.12-slim` | no wheel built from source (16 direct pins for the API set, 102 packages resolved) |
 | Runs as non-root | uid 1000 |
 | `docker compose up api` | container reports **healthy** |
 | `/predict` in-container | 33.81 / 33.68 / 33.36 — **identical to the host** |
@@ -835,6 +837,34 @@ cause rather than crash-looping — the deliberate choice in `INTERNALS.md` §11
 (`llvmlite` 171 MB via `shap`, plus `plotly`, `streamlit`, `optuna`).
 Splitting `requirements.txt` per service would remove roughly 270 MB more —
 relevant because `t3.micro` ships an 8 GiB EBS volume by default.
+
+### 🟡 5b. Publish images to ECR — workflow built, role outstanding
+
+`.github/workflows/publish.yml` builds `:serve` and `:ui` and pushes them to
+ECR on a `v*` tag, authenticating by **OIDC** rather than a stored key: GitHub
+mints a short-lived token per run and AWS trades it for temporary credentials
+scoped to this one repository. Nothing long-lived is stored as a GitHub secret —
+which matters concretely, because `.env` here holds a real access key pair and
+the whole point is that CI never needs one.
+
+What is outstanding is one admin action, because the pipeline IAM user is
+deliberately S3-scoped and gets `AccessDenied` on every IAM call:
+
+```bash
+REPO=sarthak13gupta/epex-price-forecaster ./infra/iam/apply-github-oidc.sh
+```
+
+It creates the OIDC provider, the ECR repository (scan-on-push enabled) and the
+push role, then prints the three repository variables to set. Idempotent.
+
+The security boundary is one condition in the trust policy, and it is the
+single most common way an OIDC setup is misconfigured — `aud` alone would let
+**any** GitHub repository on the internet assume the role. See
+`infra/iam/README.md`.
+
+Each image gets a moving tag (`:serve`) and an immutable one
+(`:serve-<sha>`). **Pin deployments to the SHA tag** — rollback then means
+naming the previous commit.
 
 ### ⬜ 6. Deploy (half a day)
 

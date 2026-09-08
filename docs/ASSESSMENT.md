@@ -172,12 +172,19 @@ beneficial techniques in the electricity-price-forecasting literature.
 
 ### Tier 1 — do these, in this order
 
-**1. Finish the service layer.** FastAPI, Streamlit, Docker Compose.
+> **Status, 2026-09-08.** Items 1 and 4 are done. Items 2 and 3 are the live
+> priorities and are the two that change the numbers. Full current status in
+> `ROADMAP.md`.
 
-An unfinished system is worth far less than a finished smaller one. This is
-already unblocked: the MLflow artifact loads in a fresh process and predicts. It
-is the difference between "notebook with good hygiene" and "system". Highest
-priority, lowest risk, no research uncertainty.
+**1. Finish the service layer.** FastAPI, Streamlit, Docker Compose. — ✅ **DONE**
+
+An unfinished system is worth far less than a finished smaller one. This was the
+right first call: FastAPI (4 endpoints), Streamlit (3 tabs) and three Docker
+image targets are all built and verified. It is the difference between "notebook
+with good hygiene" and "system".
+
+What remains of this item is not code but *deployment* — none of it has run
+anywhere but one laptop. See `ROADMAP.md` §D.
 
 **2. Kill `year` by replacing what it proxies.**
 
@@ -195,17 +202,25 @@ walk-forward folds already provide the calibration set. Report pinball loss and
 empirical coverage. Highest differentiation per hour spent, and immediately
 legible to anyone in energy.
 
-**4. Tests and CI.**
+**4. Tests and CI.** — ✅ **DONE**
 
-Roughly four hours of work, and its absence is the most common resume-project
-tell. Three tests earn their keep immediately:
+All three tests named here exist, plus two more that turned out to matter as
+much. 53 tests, ~2 s, no data or credentials required; CI runs them against
+**two dependency sets** plus an image build and container smoke test.
 
-- The cascade's stage ordering — that degree days cannot be built before
-  national temperature.
-- The horizon guards — that a request before `train_end + 1` or beyond
-  `max_horizon_days` raises.
-- **A leakage assertion** — that fold *k*'s features never touch data after its
-  `train_end`. This test is itself interview material.
+- The cascade's stage ordering — `test_stage_ordering.py`
+- The horizon guards — `test_horizon_guards.py`
+- **A leakage assertion** — `test_fold_leakage.py`, against the real
+  `prepare_folds`
+- Request unit validation — the 29-GW-as-29 error, which passes every null and
+  type check
+- Graceful degradation — 503 rather than a bare 200 with no model loaded
+
+Worth noting for the interview version of this story: **the CI design caught a
+real latent bug**. Running the suite against the slim serving dependency set
+revealed that `registry.py` imported `optuna` at module scope, so a
+`Baseline_Seasonal` champion could not have been loaded by the serving image at
+all. Details in `CI.md`.
 
 ### Tier 2 — genuine quantitative depth
 
