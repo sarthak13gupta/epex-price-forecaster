@@ -88,7 +88,9 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
-    profiles: ["ui"]   # not yet written; `--profile ui` once src/ui/app.py exists
+    # Behind a profile so the default `up` starts only the inference path.
+    #   docker compose --profile ui up -d ui
+    profiles: ["ui"]
 
   # --------------------------------------------------- tracking and registry
   mlflow:
