@@ -1,7 +1,7 @@
 # One image, three roles. The service is chosen by the command, not the image,
 # so training and serving can never drift apart in their dependencies — the
 # thing that causes "it trained fine but the API can't unpickle it".
-FROM python:3.12-slim
+FROM python:3.12-slim AS base
 
 # PYTHONUNBUFFERED: without it, print() sits in a block buffer and container
 #   logs stay empty until the process exits — which makes a hung training run
@@ -55,9 +55,40 @@ COPY src/ ./src/
 RUN useradd --create-home --shell /bin/bash app \
  && mkdir -p /app/results /app/mlartifacts /app/data \
  && chown -R app:app /app
+
+# ---------------------------------------------------------------------------
+# Production inference target. The exact numeric MLflow model version prepared
+# in Phase 1 is copied into the image and checked before the layer is accepted.
+# This makes a container restart independent of S3, the MLflow registry,
+# mlflow.db and host volumes. MODEL_URI is a local immutable path.
+FROM base AS bundled-serve
+
+ARG MODEL_ARTIFACT=artifacts/releases/french_spot_price_forecaster-v1
+ARG MODEL_TREE_SHA256
+
+COPY --chown=app:app ${MODEL_ARTIFACT}/ /app/model/
+
+RUN test -n "${MODEL_TREE_SHA256}" \
+ && python -m src.utils.artifact_digest /app/model \
+      --exclude release-manifest.json \
+      --expect "${MODEL_TREE_SHA256}"
+
+ENV MODEL_URI=/app/model \
+    MODEL_TREE_SHA256=${MODEL_TREE_SHA256}
+
 USER app
 
 EXPOSE 8000 8501
 
 # Default to serving. docker-compose overrides this per service.
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Default target retained for local registry-backed API, UI, MLflow and trainer
+# builds. Only an explicit `--target bundled-serve` carries a model artifact.
+FROM base AS generic
+
+USER app
+
+EXPOSE 8000 8501
+
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

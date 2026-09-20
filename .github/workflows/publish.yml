@@ -1,127 +1,217 @@
-# ==============================================================================
-# PUBLISH — builds the service images and pushes them to Amazon ECR, which is
-# what the EC2 instance pulls from.
+# Publish the exact self-contained inference image that passed isolation tests.
 #
-# Authentication is OIDC, not access keys. GitHub mints a short-lived token for
-# this repository, AWS exchanges it for temporary credentials via a role, and
-# nothing long-lived is ever stored as a secret. That matters here beyond good
-# practice: this project's .env holds a real access key pair, and the whole
-# point is that CI never needs one.
-#
-# CONFIGURATION (Settings -> Secrets and variables -> Actions -> Variables):
-#   AWS_ROLE_ARN     arn:aws:iam::<account>:role/github-actions-ecr-push
-#   AWS_REGION       e.g. eu-west-1
-#   ECR_REPOSITORY   e.g. epex-forecaster
-#
-# They are repository *variables*, not secrets — a role ARN is not a
-# credential, and keeping it visible makes the wiring auditable. The account id
-# is the only sensitive-ish part, which is why it lives in a variable rather
-# than committed here.
-#
-# Until those are set the build job is skipped rather than failed, so a fresh
-# clone has a green CI without needing an AWS account. See docs/DOCKER.md.
-# ==============================================================================
-name: Publish images
+# Model binaries are not committed. release/model-release.json identifies a
+# checksummed GitHub Release asset. The runner verifies both the downloaded
+# archive and the extracted model tree before Docker can see either one.
+name: Publish bundled inference image
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      targets:
-        description: Which images to build
-        type: choice
-        default: serve
-        options: [serve, "serve,ui", "serve,ui,full"]
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
+env:
+  RELEASE_DESCRIPTOR: release/model-release.json
+  LOCAL_IMAGE: epex-forecaster:bundled-candidate
+
 jobs:
-  # Always runs, so the reason a publish did or did not happen is visible in the
-  # run summary instead of appearing as an unexplained skip.
   preflight:
-    name: preflight
+    name: release preflight
     runs-on: ubuntu-latest
     outputs:
-      configured: ${{ steps.check.outputs.configured }}
+      configured: ${{ steps.aws.outputs.configured }}
+      model_name: ${{ steps.release.outputs.model_name }}
+      model_version: ${{ steps.release.outputs.model_version }}
+      artifact_path: ${{ steps.release.outputs.artifact_path }}
+      model_tree_sha256: ${{ steps.release.outputs.model_tree_sha256 }}
+      release_repository: ${{ steps.release.outputs.github_release_repository }}
+      release_tag: ${{ steps.release.outputs.github_release_tag }}
+      release_asset: ${{ steps.release.outputs.github_release_asset }}
+      archive_sha256: ${{ steps.release.outputs.archive_sha256 }}
     steps:
-      - id: check
+      - uses: actions/checkout@v5
+
+      - id: release
+        name: Validate the versioned model descriptor
+        run: |
+          python scripts/model_release_archive.py inspect-descriptor \
+            --descriptor "$RELEASE_DESCRIPTOR" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - id: aws
+        name: Check ECR configuration
         run: |
           if [ -n "${{ vars.AWS_ROLE_ARN }}" ] \
           && [ -n "${{ vars.AWS_REGION }}" ] \
           && [ -n "${{ vars.ECR_REPOSITORY }}" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
-            echo "### Publishing enabled" >> "$GITHUB_STEP_SUMMARY"
-            echo "Pushing to \`${{ vars.ECR_REPOSITORY }}\` in \`${{ vars.AWS_REGION }}\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "### Publish preflight passed" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
             {
               echo "### Publishing skipped"
-              echo "ECR publishing is not configured for this repository."
-              echo "Set the repository variables \`AWS_ROLE_ARN\`, \`AWS_REGION\`"
-              echo "and \`ECR_REPOSITORY\`, and create the OIDC role from"
-              echo "\`infra/iam/trust-policy-github-oidc.json\`."
+              echo "Set repository variables AWS_ROLE_ARN, AWS_REGION and"
+              echo "ECR_REPOSITORY after running infra/iam/apply-github-oidc.sh."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  build-push:
-    name: build & push (${{ matrix.target }})
+  build-verify-push:
+    name: verify & publish bundled Linux/amd64 image
     needs: preflight
     if: needs.preflight.outputs.configured == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write      # required to request the OIDC token
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: serve
-            requirements: requirements-api.txt
-          - target: ui
-            requirements: requirements-ui.txt
+      id-token: write
+    env:
+      MODEL_ARTIFACT: ${{ needs.preflight.outputs.artifact_path }}
+      MODEL_TREE_SHA256: ${{ needs.preflight.outputs.model_tree_sha256 }}
+      MODEL_RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+      MODEL_RELEASE_ASSET: ${{ needs.preflight.outputs.release_asset }}
+      MODEL_RELEASE_REPOSITORY: ${{ needs.preflight.outputs.release_repository }}
+      MODEL_ARCHIVE_SHA256: ${{ needs.preflight.outputs.archive_sha256 }}
     steps:
       - uses: actions/checkout@v5
 
+      - name: Download the approved model release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/model-release
+          gh release download "$MODEL_RELEASE_TAG" \
+            --repo "$MODEL_RELEASE_REPOSITORY" \
+            --pattern "$MODEL_RELEASE_ASSET" \
+            --dir /tmp/model-release
+
+      - name: Verify and extract the model release
+        run: |
+          python scripts/model_release_archive.py extract \
+            --archive "/tmp/model-release/$MODEL_RELEASE_ASSET" \
+            --destination . \
+            --expected-root "$MODEL_ARTIFACT" \
+            --expected-archive-sha256 "$MODEL_ARCHIVE_SHA256" \
+            --expected-tree-sha256 "$MODEL_TREE_SHA256"
+
       - uses: docker/setup-buildx-action@v3
 
+      # load:true makes the built image available to the strict runtime test.
+      # The same local image is tagged and pushed below; it is not rebuilt after
+      # verification. ubuntu-latest is amd64, matching the planned EC2 t3 host.
+      - name: Build the bundled Linux/amd64 candidate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: bundled-serve
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.LOCAL_IMAGE }}
+          build-args: |
+            REQUIREMENTS=requirements-api.txt
+            MODEL_ARTIFACT=${{ env.MODEL_ARTIFACT }}
+            MODEL_TREE_SHA256=${{ env.MODEL_TREE_SHA256 }}
+          cache-from: type=gha,scope=bundled-serve-amd64
+          cache-to: type=gha,mode=max,scope=bundled-serve-amd64
+          provenance: false
+
+      - name: Run the Phase-3 isolation and prediction contract
+        env:
+          IMAGE: ${{ env.LOCAL_IMAGE }}
+          SKIP_BUILD: "1"
+          PYTHON: python3
+        run: bash scripts/verify_bundled_container.sh
+
+      # AWS credentials are requested only after the download, extraction,
+      # image build and container test have succeeded.
       - name: Assume the ECR push role
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: gha-publish-${{ github.run_id }}
           aws-region: ${{ vars.AWS_REGION }}
-          # The ECR registry host is <account>.dkr.ecr.<region>.amazonaws.com,
-          # so the account id would otherwise appear in the build log — and on
-          # a public repository those logs are public. Set explicitly rather
-          # than relying on the action's default, which has changed between
-          # major versions.
           mask-aws-account-id: true
 
       - id: ecr
+        name: Log in to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Two moving tags plus one immutable digest-style tag. The commit SHA tag
-      # is what a deployment should pin to: `:serve` moves, `:serve-<sha>` does
-      # not, so a rollback is a matter of naming the previous SHA.
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          build-args: REQUIREMENTS=${{ matrix.requirements }}
-          tags: |
-            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}
-            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}-${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
-          provenance: false
-
-      - name: Summarise
+      - id: publish
+        name: Tag and push the verified image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
         run: |
+          moving="$REGISTRY/$REPOSITORY:bundled"
+          immutable="$REGISTRY/$REPOSITORY:bundled-$GITHUB_SHA"
+
+          docker tag "$LOCAL_IMAGE" "$moving"
+          docker tag "$LOCAL_IMAGE" "$immutable"
+          docker push "$moving"
+          docker push "$immutable"
+
+          digest=$(aws ecr describe-images \
+            --region "${{ vars.AWS_REGION }}" \
+            --repository-name "$REPOSITORY" \
+            --image-ids "imageTag=bundled-$GITHUB_SHA" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+          test -n "$digest" && test "$digest" != "None"
+          echo "image=$immutable" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Write immutable release evidence
+        env:
+          PUBLISHED_IMAGE: ${{ steps.publish.outputs.image }}
+          ECR_DIGEST: ${{ steps.publish.outputs.digest }}
+          MODEL_NAME: ${{ needs.preflight.outputs.model_name }}
+          MODEL_VERSION: ${{ needs.preflight.outputs.model_version }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          evidence = {
+              "published_at": datetime.now(timezone.utc).isoformat(),
+              "git_commit": os.environ["GITHUB_SHA"],
+              "workflow_run": (
+                  f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
+                  f"/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+              ),
+              "model_name": os.environ["MODEL_NAME"],
+              "model_version": os.environ["MODEL_VERSION"],
+              "model_tree_sha256": os.environ["MODEL_TREE_SHA256"],
+              "model_archive_sha256": os.environ["MODEL_ARCHIVE_SHA256"],
+              "image": os.environ["PUBLISHED_IMAGE"],
+              "ecr_digest": os.environ["ECR_DIGEST"],
+              "platform": "linux/amd64",
+              "phase3_verification": "passed",
+          }
+          with open("release-evidence.json", "w") as output:
+              json.dump(evidence, output, indent=2, sort_keys=True)
+              output.write("\n")
+          print(json.dumps(evidence, indent=2, sort_keys=True))
+          PY
+
           {
-            echo "### ${{ matrix.target }}"
-            echo "- \`${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}\`"
-            echo "- \`${{ vars.ECR_REPOSITORY }}:${{ matrix.target }}-${{ github.sha }}\` (pin deployments to this)"
+            echo "### Bundled inference image published"
+            echo "- Model: $MODEL_NAME version $MODEL_VERSION"
+            echo "- Model tree: \`$MODEL_TREE_SHA256\`"
+            echo "- Image: \`${{ steps.publish.outputs.image }}\`"
+            echo "- ECR digest: \`${{ steps.publish.outputs.digest }}\`"
+            echo "- Platform: \`linux/amd64\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundled-release-evidence-${{ github.sha }}
+          path: release-evidence.json
+          if-no-files-found: error
+          retention-days: 90

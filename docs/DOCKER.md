@@ -59,7 +59,7 @@ theatre.
 
 ![Docker architecture: one Dockerfile builds one image through cached layers; that single image runs as four containers chosen by command — api, ui, mlflow, train. Two are always on, two are profile-gated. Ports bind to loopback, host volumes hold mutable state, and S3 holds durable artifacts.](images/08-docker-architecture.png)
 
-### One image, four roles
+### Development image family, four roles
 
 This is the central design decision, and it is worth defending because the
 obvious alternative is one image per service.
@@ -82,17 +82,47 @@ obvious alternative is one image per service.
 | One image per service | Each is minimal; smaller pulls | Three Dockerfiles to keep in sync, and **the versions can drift** — which is exactly the failure the bundle is vulnerable to |
 
 The trade is deliberate: **correctness over size**, given the artifact format.
-The size cost is real and quantified in §7.
+The size cost is real and quantified in §7. The production candidate adds a
+fifth, separately targeted role described below; it keeps the same pinned
+serving dependencies but also carries one immutable model artifact.
 
 ### Two always-on, two gated
 
 `ui` and `train` sit behind compose **profiles**, so `docker compose up` starts
 only `api` and `mlflow`.
 
-- `ui` is gated because **`src/ui/app.py` does not exist yet**. Without the
-  profile, `docker compose up` would fail on a service that was never written.
+- `ui` is gated because it is optional for inference. `src/ui/app.py` now
+  exists and its dedicated image has been built and import-tested.
 - `train` is gated because it is a **batch job**, not a service. It must be
   invoked deliberately: `docker compose --profile train run --rm train`.
+
+### Self-contained production inference target
+
+`bundled-serve` is deliberately different from the registry-backed development
+path:
+
+```text
+Docker build
+  code + API dependencies + exact numeric model release
+                          |
+                          v
+                     /app/model
+                          |
+                MODEL_URI=/app/model
+                          |
+                          v
+               FastAPI process memory
+```
+
+Its `api-bundled` Compose service is profile-gated and needs no MLflow server,
+database, S3 access, AWS credentials or host volume. The build verifies the
+Phase-1 model-tree checksum before accepting the image layer. Runtime is
+non-root, read-only, capability-free and loopback-bound.
+
+This target does retain the **MLflow Python library** to deserialize the local
+pyfunc bundle. That is not an MLflow server dependency. The complete build and
+isolation record is in
+[`DEPLOYMENT_PHASES_2_3.md`](DEPLOYMENT_PHASES_2_3.md).
 
 ### Ports bind to loopback, not 0.0.0.0
 
@@ -302,7 +332,7 @@ cause rather than crash-looping — the deliberate design choice in
 | Check | Result |
 |---|---|
 | Docker / Compose | 29.2.1 / v5.0.2 |
-| `docker compose config` | valid; 4 services, only `api` + `mlflow` start by default |
+| `docker compose config` | valid; 5 services, only `api` + `mlflow` start by default |
 | Build | all layers; `libgomp1` present, XGBoost imports |
 | Pinned deps on `python:3.12-slim` | no wheel compiled from source. 24 direct application pins (16 for the API set); 102 packages resolved in `:serve` |
 | Runs as non-root | uid 1000 (or `$HOST_UID`) |
@@ -313,6 +343,7 @@ cause rather than crash-looping — the deliberate design choice in
 | Suite inside `:serve` | **48 passed, 5 skipped** — the skips are the training/UI guards |
 | `:ui` image | **built and verified** — Streamlit CLI reachable, `src.ui.app` imports |
 | Image build in CI | both targets, GHA layer cache, container smoke test |
+| `:serve-bundled` isolated validation | **passed** — exact checksum and predictions, restart healthy, no network/mount/database/trainer |
 
 ### Image inventory (measured)
 
@@ -326,6 +357,7 @@ transfers is the **compressed** content, which `docker image inspect --format
 | `:serve` | `requirements-api.txt` | **1.17 GB** | ~283 MB | API + MLflow server |
 | `:ui` | `requirements-ui.txt` | **1.34 GB** | ~312 MB | Streamlit |
 | `:latest` | `requirements.txt` | **1.64 GB** | — | Training; the "can do everything" image |
+| `:serve-bundled` | `requirements-api.txt` + model v1 | — | **288,277,896 bytes** | Self-contained inference |
 
 Down from a single 2.65 GB image. Two changes got there: removing
 `nvidia-nccl-cu13` (288 MB, pulled transitively by `xgboost` but used only for
@@ -366,6 +398,10 @@ because `NaiveForecaster` is defined there — so a `Baseline_Seasonal` champion
   installs a native engine managed by systemd; it needs a `sudo` run.
 - **Nothing pulls an image onto a host yet.** `publish.yml` pushes to ECR; the
   delivery half is unbuilt. See `ROADMAP.md`.
+- **The bundled target is not published yet.** Phase 4 now supplies its
+  gitignored model through a double-checksummed GitHub Release asset and has
+  locally validated Linux/amd64. The asset upload, AWS OIDC setup and first
+  remote workflow/ECR digest remain. See `DEPLOYMENT_PHASE_4.md`.
 
 ---
 
@@ -387,6 +423,9 @@ docker compose exec api bash                       # shell into a running contai
 docker run --rm epex-forecaster:latest python -c "import xgboost"
 docker compose --profile train run --rm train      # one training run, then exit
 docker compose --profile ui up -d ui               # Streamlit on :8501
+docker compose --profile bundled build api-bundled # model embedded at build
+docker compose --profile bundled up -d api-bundled # API on loopback :18000
+bash scripts/verify_bundled_container.sh            # strict Phase-3 proof
 
 # --- inspection -------------------------------------------------------------
 docker images epex-forecaster

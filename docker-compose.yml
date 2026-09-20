@@ -23,6 +23,41 @@
 
 services:
 
+  # ------------------------------------------ self-contained production API
+  api-bundled:
+    # Phase 2/3 path: the approved numeric model artifact is part of the image.
+    # No registry database, S3 access, AWS credentials or host volume is needed
+    # to start or predict. Port 18000 avoids ambiguity with a local dev API.
+    build:
+      context: .
+      target: bundled-serve
+      args:
+        REQUIREMENTS: requirements-api.txt
+        MODEL_ARTIFACT: ${MODEL_ARTIFACT:-artifacts/releases/french_spot_price_forecaster-v1}
+        MODEL_TREE_SHA256: ${MODEL_TREE_SHA256:-c287e8bb61766720abdd12223075474dfebd70873b70c996296e0ba67047f132}
+    image: epex-forecaster:serve-bundled
+    command: >
+      uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:18000:8000"
+    environment:
+      ENV: local
+      PROJECT_ROOT: /app
+      MODEL_URI: /app/model
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+    profiles: ["bundled"]
+
   # ---------------------------------------------------------------- inference
   api:
     # Slim serving image: no optuna, shap, statsmodels, matplotlib or streamlit.

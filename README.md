@@ -227,6 +227,9 @@ serving image at all**. Details in [`docs/CI.md`](docs/CI.md).
 [`docs/INTERNALS.md`](docs/INTERNALS.md) | Low-level design, 18 module sections, 15 flowcharts |
 [`docs/CI.md`](docs/CI.md) | Test suite and pipelines, and the bugs they found |
 [`docs/DOCKER.md`](docs/DOCKER.md) | Container architecture and build steps |
+[`docs/MODEL_RELEASE.md`](docs/MODEL_RELEASE.md) | Phase 1: immutable model candidate and provenance |
+[`docs/DEPLOYMENT_PHASES_2_3.md`](docs/DEPLOYMENT_PHASES_2_3.md) | Bundle the model and prove isolated inference |
+[`docs/DEPLOYMENT_PHASE_4.md`](docs/DEPLOYMENT_PHASE_4.md) | Checksummed release asset, Linux/amd64 validation and ECR publication |
 [`docs/AWS_S3_EC2.md`](docs/AWS_S3_EC2.md) | S3 and EC2 from first principles, with model-interaction diagrams |
 [`docs/MLOPS.md`](docs/MLOPS.md) | Each lifecycle step: generic definition, why, how it is done here |
 [`docs/CORRECTIONS.md`](docs/CORRECTIONS.md) | 17 findings, measured — including where earlier claims were wrong |
@@ -251,7 +254,7 @@ that survived scrutiny and findings that did not are both in there.
 | FastAPI, Streamlit, Docker | ✅ Built and verified |
 | S3 read + write | ✅ Verified round-trip |
 | Tests + CI | ✅ 53 tests, 3 CI jobs |
-| ECR publish | ✅ Built, awaiting the OIDC role |
+| ECR publish | 🟡 Bundled release flow built and locally validated; external setup/run pending |
 | EC2 deployment | ⬜ Not deployed |
 
 The one-line summary: **the system is complete and tested, but it has never run

@@ -34,6 +34,7 @@ mlartifacts/
 artifacts/
 results/
 optuna*.db
+dist/model-releases/
 
 # The MLflow tracking store. Local state, and it bakes ABSOLUTE host paths into
 # the experiments table — sharing it would hand someone else paths that do not

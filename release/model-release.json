@@ -1,0 +1,10 @@
+{
+  "model_name": "french_spot_price_forecaster",
+  "model_version": "1",
+  "artifact_path": "artifacts/releases/french_spot_price_forecaster-v1",
+  "model_tree_sha256": "c287e8bb61766720abdd12223075474dfebd70873b70c996296e0ba67047f132",
+  "github_release_repository": "sarthak13gupta/epex-price-forecaster",
+  "github_release_tag": "model-french-spot-price-forecaster-v1",
+  "github_release_asset": "french_spot_price_forecaster-v1.tar.gz",
+  "archive_sha256": "e38a33a81a7ff55b3383da03a942184fe3ca4cbba22043b2395c13ea0cac24df"
+}

@@ -157,6 +157,7 @@ Done. Set these as repository VARIABLES (not secrets) at
   AWS_REGION       ${REGION}
   ECR_REPOSITORY   ${ECR_REPOSITORY}
 
-Then run the "Publish images" workflow. Until those three are set it skips
-rather than fails.
+Then upload the model asset described by release/model-release.json and run the
+"Publish bundled inference image" workflow. Until these three variables are set
+the publish job skips rather than fails.
 EOF

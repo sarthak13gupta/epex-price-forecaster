@@ -79,7 +79,9 @@ statements makes the scope of each visible at a glance.
 ```
 apply-github-oidc.sh          # OIDC provider + ECR repo + CI role
   -> set the 3 repo variables # AWS_ROLE_ARN, AWS_REGION, ECR_REPOSITORY
-  -> run "Publish images"     # image lands in ECR
+  -> upload model Release asset
+  -> run "Publish bundled inference image"
+                               # verified image lands in ECR
 
 apply.sh                      # instance role + profile
   -> launch EC2 with the profile

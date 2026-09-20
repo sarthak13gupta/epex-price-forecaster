@@ -24,6 +24,16 @@ mlartifacts/
 mlflow.db
 *.parquet
 
+# Model release candidates are normally excluded with all other generated
+# artifacts. The one immutable Phase-1 candidate below is the explicit input to
+# the `bundled-serve` target. Update this allow-list when releasing a new numeric
+# model version; never include the whole artifacts tree in a build context.
+artifacts/**
+!artifacts/releases/
+artifacts/releases/**
+!artifacts/releases/french_spot_price_forecaster-v1/
+!artifacts/releases/french_spot_price_forecaster-v1/**
+
 # Research and documentation — not needed at runtime
 notebooks/
 docs/

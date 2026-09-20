@@ -705,12 +705,14 @@ know about differs from one you do not:
 | Rendered Streamlit output | `AppTest` could cover it; today CI builds the `:ui` image and imports `src.ui.app` |
 | `ruff` / `mypy` | Neither is configured for this project yet — see `ROADMAP.md` |
 
-**CD** is half-built. `publish.yml` pushes `:serve` and `:ui` to ECR on a `v*`
-tag, authenticating by **OIDC** rather than a stored key — GitHub mints a
-short-lived token per run and AWS trades it for temporary credentials. Images
-carry both a moving tag and an immutable `-<sha>` tag, so a rollback is naming
-the previous commit. What is missing is the delivery half: nothing yet pulls
-that image onto a host.
+**CD** is half-built. `publish.yml` obtains the gitignored model from a
+double-checksummed GitHub Release asset, builds `bundled-serve` for Linux/amd64,
+runs the isolated prediction contract, and only then authenticates by **OIDC**
+to push that same tested image to ECR. It records the authoritative ECR digest
+in release evidence. This path has passed locally but has not run remotely: the
+asset, OIDC role and repository variables still need account-owner setup. After
+that, the remaining delivery half is unchanged—nothing yet pulls the digest
+onto a host. See `DEPLOYMENT_PHASE_4.md`.
 
 **On AWS / future.**
 

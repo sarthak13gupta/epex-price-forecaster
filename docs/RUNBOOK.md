@@ -26,7 +26,8 @@ mistakes that were actually made here, not hypotheticals.
 | Docker Compose | v5.0.2 | The `compose` plugin, not the old `docker-compose` binary |
 | Disk | ~4 GB | 1.6 GB venv, plus images if you use Docker |
 | AWS account | — | **Not required.** `ENV=local` runs everything from disk |
-| AWS CLI v2 | 2.36.40 | Only for the IAM scripts. No sudo needed — see below |
+| GitHub CLI | 2.101.0 | Phase-4 model Release, repository variables and workflow |
+| AWS CLI v2 | 2.36.49 | Phase-4 IAM/ECR scripts. No sudo needed — see below |
 
 The AWS CLI installs user-local, which matters on a machine without
 passwordless sudo:
@@ -123,6 +124,18 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db      # → http://localhost:50
 
 The parent run holds the leaderboard; each model is a nested child run.
 
+### Step 4 — prepare an immutable model release candidate
+
+```bash
+venv/bin/python scripts/prepare_model_release.py
+```
+
+This resolves the numeric registered version, exports it below the gitignored
+`artifacts/releases/` directory, verifies it from a fresh interpreter and writes
+a provenance/checksum manifest beside it. It does **not** assign the `champion`
+alias. See [`MODEL_RELEASE.md`](MODEL_RELEASE.md) for the current candidate,
+verification evidence and the exact handoff to the serving-image build.
+
 ## 3. Serve it
 
 Three processes, three terminals. Order matters: the UI needs the API, and the
@@ -197,6 +210,59 @@ must never be internet-exposed.
 
 Full detail, including the Dockerfile decisions and image sizes, is in
 [`DOCKER.md`](DOCKER.md).
+
+### Self-contained deployment candidate
+
+The Phase-2/3 image carries the immutable numeric model release inside the
+image. It does not need S3, the MLflow server/database or a host volume at
+runtime:
+
+```bash
+# Full isolated acceptance test: build, boot, predict, inspect, restart
+bash scripts/verify_bundled_container.sh
+
+# Or run it interactively through Compose on loopback port 18000
+docker compose --profile bundled build api-bundled
+docker compose --profile bundled up -d api-bundled
+curl --noproxy '*' http://127.0.0.1:18000/health
+docker compose --profile bundled down
+```
+
+The verifier uses no network or published port, no mount, a read-only root
+filesystem and no AWS or MLflow tracking variables. See
+[`DEPLOYMENT_PHASES_2_3.md`](DEPLOYMENT_PHASES_2_3.md) for the exact evidence
+and next-version procedure.
+
+### Publish the verified image to ECR
+
+Phase 4 uses a checksummed GitHub Release asset because the binary model is
+gitignored and S3 is intentionally absent from this serving design:
+
+```bash
+# Create the deterministic asset
+venv/bin/python scripts/model_release_archive.py create \
+  --source artifacts/releases/french_spot_price_forecaster-v1 \
+  --output dist/model-releases/french_spot_price_forecaster-v1.tar.gz \
+  --archive-root artifacts/releases/french_spot_price_forecaster-v1
+
+# After committing/pushing the descriptor and tooling, create the model release
+gh release create model-french-spot-price-forecaster-v1 \
+  dist/model-releases/french_spot_price_forecaster-v1.tar.gz \
+  --repo sarthak13gupta/epex-price-forecaster --target main
+
+# One-time AWS setup with an administrator profile
+REPO=sarthak13gupta/epex-price-forecaster \
+  ./infra/iam/apply-github-oidc.sh
+
+# After setting the three repository variables printed above
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow verifies the archive and model checksums, builds and tests
+Linux/amd64, then pushes the already-tested image and records its ECR digest.
+Follow [`DEPLOYMENT_PHASE_4.md`](DEPLOYMENT_PHASE_4.md); do not trigger the
+application tag until the model asset and repository variables exist.
 
 ## 5. Tests and CI
 

@@ -4,7 +4,7 @@ A single status page. Every other doc describes how something works; this one
 describes **what does not exist yet**, why it is ordered the way it is, and
 which items are blocked on a decision rather than on effort.
 
-Last reviewed: **2026-09-08**, at commit `e38cc63`.
+Last reviewed: **2026-09-20**.
 
 - [Where the project stands](#where-the-project-stands)
 - [Blocked on you, not on effort](#blocked-on-you-not-on-effort)
@@ -30,10 +30,10 @@ Last reviewed: **2026-09-08**, at commit `e38cc63`.
 | MLflow tracking + registry | ✅ Model v1 registered |
 | FastAPI | ✅ 4 endpoints |
 | Streamlit | ✅ 3 tabs |
-| Docker | ✅ 3 image targets, all built |
+| Docker | ✅ Service images plus self-contained bundled inference target built |
 | Tests | ✅ 53, ~2 s |
 | CI | ✅ 3 jobs on every push |
-| Image publish (ECR) | 🟡 Workflow written, role not created |
+| Image publish (ECR) | 🟡 Bundled workflow locally validated; asset, role and remote run pending |
 | **Deployment to EC2** | ⬜ **Nothing runs on a server yet** |
 | Monitoring / drift | ⬜ Not started |
 | Continuous training | ⬜ Not started |
@@ -157,12 +157,30 @@ how good it is.
 
 Unblocked by B2 and B3. Then tag a release and the workflow runs:
 
+The model-side prerequisite and local image packaging are now complete:
+registered version 1 was exported as an immutable, checksum-recorded release
+candidate, bundled into the serving image, and verified in a read-only
+container with no network, volume, database or training process. See
+`MODEL_RELEASE.md` and `DEPLOYMENT_PHASES_2_3.md`. It has deliberately **not**
+been assigned `@champion`; model-quality approval remains a separate decision.
+
+The release mechanism is now implemented and locally validated. A deterministic
+GitHub Release asset supplies the gitignored model; the workflow verifies its
+archive and model-tree hashes, builds and tests Linux/amd64, then pushes the same
+tested image and records its ECR digest. The amd64 image passed the complete
+Phase-3 contract locally. See `DEPLOYMENT_PHASE_4.md`.
+
+What remains is external state: commit/push these changes, upload the model
+asset, create the OIDC role/ECR repository, set the three repository variables,
+and capture the first successful workflow's digest. Until that evidence exists,
+D1 is not complete.
+
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-Verifies the OIDC path end to end and produces the immutable `:serve-<sha>` tag
-a deployment should pin to.
+Verifies the OIDC path end to end and produces `:bundled-<sha>` plus the ECR
+digest a deployment should pin to.
 
 ### D2. Deploy inference-only to EC2
 

@@ -107,8 +107,9 @@ No AWS credentials are configured anywhere in `ci.yml`, and `ENV` stays
 
 ## The publish workflow
 
-`.github/workflows/publish.yml`, on `v*` tags and manual dispatch. Builds the
-`serve` and `ui` images and pushes them to ECR.
+`.github/workflows/publish.yml`, on `v*` application tags and manual dispatch,
+publishes the self-contained `bundled-serve` inference image to ECR. It does not
+publish the generic registry-backed API or UI.
 
 Authentication is **OIDC**. GitHub mints a short-lived token per run; AWS trades
 it for temporary credentials via `github-actions-ecr-push`. No access key is
@@ -131,12 +132,28 @@ auditable. Until all three are set, a `preflight` job skips the build and writes
 account, and a misconfiguration reads as a message rather than an unexplained
 skip.
 
-Each image gets two tags: a moving one (`:serve`) and an immutable one
-(`:serve-<sha>`). **Deployments should pin the SHA tag** — rollback is then a
-matter of naming the previous commit.
+The gitignored model reaches the clean runner as a GitHub Release asset selected
+by `release/model-release.json`. Before building, the workflow verifies both the
+compressed archive SHA-256 and the extracted Phase-1 model-tree SHA-256. This
+keeps S3 and static credentials out of the release path without putting the
+binary model in Git.
+
+The workflow builds Linux/amd64, runs the complete networkless/read-only Phase-3
+contract, and only then requests AWS credentials. It tags and pushes that same
+tested image—there is no post-test rebuild—as:
+
+- moving `:bundled` for discovery;
+- commit-specific `:bundled-<sha>` for source traceability.
+
+Deployments should ultimately pin the returned **ECR digest**, because even a
+commit tag can be moved in a mutable repository. The workflow stores a
+`release-evidence.json` artifact containing the model version/tree checksum,
+Git commit, platform, image tag and digest.
 
 Run `infra/iam/apply-github-oidc.sh` once to create the OIDC provider, the ECR
-repository and the role; it prints the three variable values to paste in.
+repository and the role; it prints the three variable values to paste in. The
+end-to-end operator procedure and current evidence are in
+[`DEPLOYMENT_PHASE_4.md`](DEPLOYMENT_PHASE_4.md).
 
 ## Bugs CI found before it ever ran
 
