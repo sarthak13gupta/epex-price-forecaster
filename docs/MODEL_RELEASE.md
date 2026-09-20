@@ -125,12 +125,11 @@ No alias was changed during Phase 1.
 ## Release identity and reproducibility
 
 The training run recorded Git commit
-`fbe42020234e7195c3e1f0500ff1cb685fa0d0bc`, which matches the current `HEAD` at
-the time of preparation. The generated manifest records the working tree as
-dirty because this release procedure and its documentation were being added at
-the same time. Before building the final ECR image, rerun the exporter from the
-committed release code and retain the new manifest with the image-build
-evidence.
+`fbe42020234e7195c3e1f0500ff1cb685fa0d0bc`. After the release tooling was
+committed, the candidate was exported again from clean release commit
+`a780249437431c7cfc8a36dcdb93b46fe6181165`. The model-tree checksum and all
+five predictions remained identical. The refreshed manifest records
+`git_worktree_clean: true`; this clean export is the asset prepared for Phase 4.
 
 The tree SHA-256 covers sorted relative filenames and their bytes. It is
 calculated before `release-manifest.json` is written, so the manifest does not

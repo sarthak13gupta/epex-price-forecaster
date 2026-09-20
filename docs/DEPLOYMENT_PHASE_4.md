@@ -109,7 +109,7 @@ Current identity:
 | Field | Value |
 |---|---|
 | Asset | `french_spot_price_forecaster-v1.tar.gz` |
-| Archive SHA-256 | `e38a33a81a7ff55b3383da03a942184fe3ca4cbba22043b2395c13ea0cac24df` |
+| Archive SHA-256 | `3ff2c977e91cbe43081fa6e4c86ac478bdbd6d717833aa874f556624001c71a8` |
 | Model-tree SHA-256 | `c287e8bb61766720abdd12223075474dfebd70873b70c996296e0ba67047f132` |
 | Archive size | about 193 KiB |
 | Model files / bytes | 39 / 642,818 |
@@ -125,7 +125,7 @@ venv/bin/python scripts/model_release_archive.py extract \
   --archive dist/model-releases/french_spot_price_forecaster-v1.tar.gz \
   --destination "$release_tmp" \
   --expected-root artifacts/releases/french_spot_price_forecaster-v1 \
-  --expected-archive-sha256 e38a33a81a7ff55b3383da03a942184fe3ca4cbba22043b2395c13ea0cac24df \
+  --expected-archive-sha256 3ff2c977e91cbe43081fa6e4c86ac478bdbd6d717833aa874f556624001c71a8 \
   --expected-tree-sha256 c287e8bb61766720abdd12223075474dfebd70873b70c996296e0ba67047f132
 ```
 
