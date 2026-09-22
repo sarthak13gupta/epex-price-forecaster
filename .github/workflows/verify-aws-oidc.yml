@@ -1,0 +1,52 @@
+# Manual, read-only proof that GitHub can exchange its OIDC identity for the
+# repository-scoped AWS role. This is deliberately separate from image publish
+# so authentication can be diagnosed without building or mutating ECR.
+name: Verify AWS OIDC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: assume role and read ECR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Assume the repository's AWS role
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: gha-oidc-check-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Verify caller and repository scope
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          arn=$(aws sts get-caller-identity --query Arn --output text)
+          case "$arn" in
+            *:assumed-role/github-actions-ecr-push/*) ;;
+            *) echo "::error::unexpected AWS caller role"; exit 1 ;;
+          esac
+
+          repository=$(aws ecr describe-repositories \
+            --region "$AWS_REGION" \
+            --repository-names "$ECR_REPOSITORY" \
+            --query 'repositories[0].repositoryName' \
+            --output text)
+          test "$repository" = "$ECR_REPOSITORY"
+
+          {
+            echo "### AWS OIDC verification passed"
+            echo "- Role: \`github-actions-ecr-push\`"
+            echo "- Region: \`$AWS_REGION\`"
+            echo "- ECR repository: \`$repository\`"
+            echo "- Operations performed: STS identity and ECR read only"
+          } >> "$GITHUB_STEP_SUMMARY"
