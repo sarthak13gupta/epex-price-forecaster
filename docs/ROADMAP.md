@@ -170,10 +170,10 @@ archive and model-tree hashes, builds and tests Linux/amd64, then pushes the sam
 tested image and records its ECR digest. The amd64 image passed the complete
 Phase-3 contract locally. See `DEPLOYMENT_PHASE_4.md`.
 
-What remains is external state: commit/push these changes, upload the model
-asset, create the OIDC role/ECR repository, set the three repository variables,
-and capture the first successful workflow's digest. Until that evidence exists,
-D1 is not complete.
+The source changes and checksum-matching model Release asset are now published
+on GitHub. What remains is AWS external state: create the OIDC role/ECR
+repository, set the three repository variables, and capture the first successful
+workflow's digest. Until that evidence exists, D1 is not complete.
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0

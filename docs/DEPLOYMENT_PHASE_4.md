@@ -3,20 +3,19 @@
 This is the implementation record and operator runbook for moving the bundled
 inference image from a locally verified candidate to an immutable ECR release.
 
-Last verified locally: **2026-09-20**.
+Last updated: **2026-09-22**.
 
 ## Status
 
 The Phase-4 release mechanism is **implemented and locally validated**. The
-external release is **not yet published**: the repository changes must first be
-committed and pushed, the model archive must be attached to its GitHub Release,
-and the AWS OIDC role/repository variables must exist.
+source commits and model asset are published on GitHub. AWS publication is
+pending the administrator profile, OIDC role and repository variables.
 
 The required CLIs were installed with Homebrew during this phase:
 
 | CLI | Installed version | Authentication state |
 |---|---|---|
-| GitHub CLI | `gh 2.101.0` | Browser/device authorization required |
+| GitHub CLI | `gh 2.101.0` | Authenticated as `sarthak13gupta` |
 | AWS CLI | `aws-cli 2.36.49` | No profile or static credential configured |
 
 Homebrew installed Python 3.14 as an AWS CLI dependency. Project commands still
@@ -30,8 +29,9 @@ tests were not migrated to the Homebrew interpreter.
 | Versioned release descriptor | Complete |
 | Linux/amd64 bundled image build | Complete locally |
 | Phase-3 checks against amd64 image | Passed locally |
-| GitHub Actions build/verify/push workflow | Implemented, not run remotely |
-| GitHub model Release asset | Not uploaded |
+| Source changes on `main` | Published through commit `30b1f4d` |
+| GitHub Actions build/verify/push workflow | Implemented, awaiting AWS setup |
+| GitHub model Release asset | Uploaded and digest-verified |
 | AWS OIDC role and repository variables | Account-owner setup still required |
 | ECR digest | Not available until the first successful publish |
 
@@ -39,9 +39,8 @@ tests were not migrated to the Homebrew interpreter.
 
 Only account-bound actions require human input:
 
-1. **GitHub device authorization.** Run `gh auth login --web` and approve the
-   displayed one-time code in the browser. Never paste a GitHub password or
-   token into project files or this runbook.
+1. **GitHub device authorization — complete.** `gh auth login --web` was
+   approved in the browser. No password or token was put in project files.
 2. **AWS administrator authentication.** Configure an administrator profile or
    use your organization's AWS SSO flow. The current machine has no AWS profile,
    and `.env` contains region/configuration only—no AWS key. Do not use the
@@ -50,9 +49,8 @@ Only account-bound actions require human input:
    any scan finding is acceptable. Automation can retrieve findings but should
    not approve security risk on the owner's behalf.
 
-Everything else—archive upload, repository variables, workflow dispatch and
-digest verification—can proceed through the authenticated CLIs after items 1
-and 2 are satisfied.
+The archive upload is complete. Repository variables, workflow dispatch and ECR
+digest verification can proceed after item 2 is satisfied.
 
 ## Release architecture
 
@@ -157,6 +155,18 @@ gh release upload model-french-spot-price-forecaster-v1 \
 Do not use `--clobber`. A changed asset must become a new model version with a
 new tag, descriptor and checksums. GitHub assets can be replaced by a maintainer,
 so the workflow never trusts the tag or filename alone; it verifies both hashes.
+
+### Published GitHub evidence
+
+The release was created successfully at:
+
+```text
+https://github.com/sarthak13gupta/epex-price-forecaster/releases/tag/model-french-spot-price-forecaster-v1
+```
+
+GitHub reports asset ID `581689794`, size `197,752` bytes, state `uploaded`, and
+digest `sha256:3ff2c977e91cbe43081fa6e4c86ac478bdbd6d717833aa874f556624001c71a8`.
+That digest exactly matches the committed descriptor and local archive.
 
 ## 4.3 Create the ECR/OIDC boundary
 
@@ -278,12 +288,12 @@ with that digest. It does not mean rebuilding an old commit.
 
 Phase 4 is fully complete only when all of the following evidence exists:
 
-- model Release asset visible at the descriptor's tag;
+- model Release asset visible at the descriptor's tag — **complete**;
 - successful remote workflow run;
 - `release-evidence.json` retained by that run;
 - ECR contains `bundled-<git-commit>`;
 - recorded ECR digest matches `aws ecr describe-images`;
 - ECR scan findings have been reviewed.
 
-Until then, the correct status is **release automation complete, external
-publication pending**.
+Until the remaining criteria pass, the correct status is **GitHub release
+complete, AWS publication pending**.
