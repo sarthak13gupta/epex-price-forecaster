@@ -16,7 +16,7 @@ The required CLIs were installed with Homebrew during this phase:
 | CLI | Installed version | Authentication state |
 |---|---|---|
 | GitHub CLI | `gh 2.101.0` | Authenticated as `sarthak13gupta` |
-| AWS CLI | `aws-cli 2.36.49` | No profile or static credential configured |
+| AWS CLI | `aws-cli 2.36.49` | `admin` profile exists, but currently resolves to the S3-only pipeline user |
 
 Homebrew installed Python 3.14 as an AWS CLI dependency. Project commands still
 use the isolated Python 3.12 environment at `venv/bin/python`; the model and
@@ -41,9 +41,12 @@ Only account-bound actions require human input:
 
 1. **GitHub device authorization — complete.** `gh auth login --web` was
    approved in the browser. No password or token was put in project files.
-2. **AWS administrator authentication.** Configure an administrator profile or
-   use your organization's AWS SSO flow. The current machine has no AWS profile,
-   and `.env` contains region/configuration only—no AWS key. Do not use the
+2. **AWS administrator authentication — blocked on the correct identity.** The
+   `admin` profile has the correct `ap-northeast-1` region, but a live STS check
+   resolves it to `quantitative-pipeline-user`. Read-only preflights for
+   `iam:ListRoles`, `iam:ListOpenIDConnectProviders` and
+   `ecr:DescribeRepositories` were all denied. Create a separate administrator
+   identity and replace this profile's credentials; do not elevate or reuse the
    S3-only pipeline identity for IAM setup.
 3. **ECR vulnerability review.** After publication, a human must decide whether
    any scan finding is acceptable. Automation can retrieve findings but should
@@ -197,6 +200,22 @@ Set the three values printed by the script as GitHub repository **variables**:
 | `ECR_REPOSITORY` | Repository name, normally `epex-forecaster` |
 
 No AWS access key is stored in GitHub.
+
+### Verified AWS preflight failure
+
+On 2026-09-22, the following checks were run before attempting any mutation:
+
+```bash
+AWS_PROFILE=admin aws sts get-caller-identity
+AWS_PROFILE=admin aws iam list-roles --max-items 1
+AWS_PROFILE=admin aws iam list-open-id-connect-providers
+AWS_PROFILE=admin aws ecr describe-repositories --region ap-northeast-1
+```
+
+STS succeeded, proving the key is valid, but identified
+`quantitative-pipeline-user`. All three service preflights returned
+`AccessDenied`. No IAM, OIDC or ECR resource was created. The profile name is
+only a local label; naming it `admin` does not grant administrative permissions.
 
 ## 4.4 What the workflow does
 

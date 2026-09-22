@@ -84,6 +84,12 @@ Verify, then continue:
 aws iam list-roles --max-items 1 >/dev/null && echo "admin OK"
 ```
 
+**2026-09-22 preflight:** a profile named `admin` was configured in Tokyo, but
+STS showed that its key belongs to `quantitative-pipeline-user`. IAM role/OIDC
+and ECR reads were denied. A profile name is not a permission boundary; its
+underlying IAM identity must be replaced with a separate administrator identity
+before B2 can run.
+
 ### B1. A native Docker engine
 
 Independent of the AWS chain. Currently `/usr/bin/docker` is a symlink into
