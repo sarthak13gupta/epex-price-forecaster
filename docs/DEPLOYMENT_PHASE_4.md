@@ -16,7 +16,7 @@ The required CLIs were installed with Homebrew during this phase:
 | CLI | Installed version | Authentication state |
 |---|---|---|
 | GitHub CLI | `gh 2.101.0` | Authenticated as `sarthak13gupta` |
-| AWS CLI | `aws-cli 2.36.49` | `admin` profile exists, but currently resolves to the S3-only pipeline user |
+| AWS CLI | `aws-cli 2.36.49` | `admin` profile verified in `ap-northeast-1`; temporary administrator access active |
 
 Homebrew installed Python 3.14 as an AWS CLI dependency. Project commands still
 use the isolated Python 3.12 environment at `venv/bin/python`; the model and
@@ -41,13 +41,12 @@ Only account-bound actions require human input:
 
 1. **GitHub device authorization — complete.** `gh auth login --web` was
    approved in the browser. No password or token was put in project files.
-2. **AWS administrator authentication — blocked on the correct identity.** The
-   `admin` profile has the correct `ap-northeast-1` region, but a live STS check
-   resolves it to `quantitative-pipeline-user`. Read-only preflights for
-   `iam:ListRoles`, `iam:ListOpenIDConnectProviders` and
-   `ecr:DescribeRepositories` were all denied. Create a separate administrator
-   identity and replace this profile's credentials; do not elevate or reuse the
-   S3-only pipeline identity for IAM setup.
+2. **AWS administrator authentication — complete temporarily.** The `admin`
+   profile uses `ap-northeast-1` and resolves to `quantitative-pipeline-user`,
+   which now has the AWS-managed `AdministratorAccess` policy. IAM role/OIDC
+   reads, Tokyo ECR reads, and policy simulation for the required create/push
+   actions passed. Remove this temporary administrator policy after OIDC/ECR
+   setup and verification.
 3. **ECR vulnerability review.** After publication, a human must decide whether
    any scan finding is acceptable. Automation can retrieve findings but should
    not approve security risk on the owner's behalf.
@@ -201,7 +200,7 @@ Set the three values printed by the script as GitHub repository **variables**:
 
 No AWS access key is stored in GitHub.
 
-### Verified AWS preflight failure
+### AWS permission preflight history
 
 On 2026-09-22, the following checks were run before attempting any mutation:
 
@@ -216,6 +215,18 @@ STS succeeded, proving the key is valid, but identified
 `quantitative-pipeline-user`. All three service preflights returned
 `AccessDenied`. No IAM, OIDC or ECR resource was created. The profile name is
 only a local label; naming it `admin` does not grant administrative permissions.
+
+After `AdministratorAccess` was attached, the 2026-09-22 preflight was repeated:
+
+- `iam:ListRoles` and `iam:ListOpenIDConnectProviders`: allowed;
+- Tokyo `ecr:DescribeRepositories`: allowed;
+- simulation of `iam:CreateRole`, `iam:CreateOpenIDConnectProvider`,
+  `iam:PutRolePolicy`, `ecr:CreateRepository` and `ecr:PutImage`: allowed;
+- GitHub OIDC provider: absent;
+- Tokyo `epex-forecaster` ECR repository: absent.
+
+Provisioning can therefore start from a known-empty state. Administrator access
+on a pipeline identity is a bootstrap exception, not the intended steady state.
 
 ## 4.4 What the workflow does
 

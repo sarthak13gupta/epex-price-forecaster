@@ -90,6 +90,12 @@ and ECR reads were denied. A profile name is not a permission boundary; its
 underlying IAM identity must be replaced with a separate administrator identity
 before B2 can run.
 
+**Resolution later that day:** temporary `AdministratorAccess` was attached to
+that identity. IAM/OIDC reads, Tokyo ECR reads and simulation of the required
+create/push actions now pass. B0 is operationally unblocked, but the policy must
+be removed again after provisioning because a pipeline user should not retain
+administrator privileges.
+
 ### B1. A native Docker engine
 
 Independent of the AWS chain. Currently `/usr/bin/docker` is a symlink into
