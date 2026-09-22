@@ -4,7 +4,7 @@ A single status page. Every other doc describes how something works; this one
 describes **what does not exist yet**, why it is ordered the way it is, and
 which items are blocked on a decision rather than on effort.
 
-Last reviewed: **2026-09-22**.
+Last reviewed: **2026-09-23**.
 
 - [Where the project stands](#where-the-project-stands)
 - [Blocked on you, not on effort](#blocked-on-you-not-on-effort)
@@ -34,7 +34,7 @@ Last reviewed: **2026-09-22**.
 | Tests | ✅ 53, ~2 s |
 | CI | ✅ 3 jobs on every push |
 | Image publish (ECR) | ✅ Hardened bundled image published; digest and scan review recorded |
-| **Deployment to EC2** | ⬜ **Nothing runs on a server yet** |
+| **Deployment to EC2** | 🟡 Automation ready; provisioning permission pending |
 | Monitoring / drift | ⬜ Not started |
 | Continuous training | ⬜ Not started |
 
@@ -49,15 +49,16 @@ and everything in the next section waits on them.
 
 | # | Action | Why it needs you |
 |---|---|---|
-| B0 | 🟡 Remove temporary `AdministratorAccess` | Phase-4 bootstrap is complete; long-lived pipeline keys must not remain account administrators |
+| B0 | 🟡 Verify temporary `AdministratorAccess` is absent | Admin-level capability is absent; the current identity cannot inspect its attachments |
 | B1 | `sudo ./infra/host/install-docker-engine.sh` | No passwordless sudo here |
 | B2 | ✅ `./infra/iam/apply-github-oidc.sh` | OIDC provider, Tokyo ECR repository and push role created |
 | B3 | ✅ Set three repository variables | Tokyo values set; GitHub role assumption verified |
-| B4 | Add/apply an ECR-pull-only EC2 role | The current `apply.sh` is S3-oriented and does not match the bundled design |
+| B4 | 🟡 Apply the prepared ECR-pull-only EC2 role | Automation exists; current CLI identity lacks IAM/EC2 provisioning permission |
 
 B1 is independent and can be done any time. B2–B3 and image publication are
-complete. The active security/deployment chain is now **remove temporary admin
-→ B4 → deploy.**
+complete. The temporary admin policy was removed. The active deployment chain
+is now **grant narrow Phase-5 bootstrap permission → B4 → deploy → remove that
+bootstrap permission.**
 
 ### B0. An admin AWS profile
 
@@ -160,13 +161,15 @@ git tag v0.1.0 && git push origin v0.1.0
 ### B4. The EC2 instance role
 
 The self-contained bundled image needs only `policy-ecr-pull.json`: it does not
-need S3 model access or forecast-write permissions. The current `apply.sh`
-always builds an S3 policy and requires a bucket, so it must not be used as-is
-for this deployment. Phase 5 must add an ECR-only apply path that creates the
+need S3 model access or forecast-write permissions. The legacy `apply.sh`
+always builds an S3 policy and must not be used for this deployment. Phase 5
+now has a separate idempotent `apply-ec2-ecr-pull.sh` path that creates the
 EC2 role/profile and substitutes the Tokyo repository ARN.
 
-Attach `epex-forecaster-ec2-profile` **at instance launch** — attaching later
-works, but the running container caches the credential chain result.
+**2026-09-23 preflight:** no resources were created. The configured profile was
+denied on `ec2:DescribeVpcs` and IAM-policy inspection. Grant the temporary,
+narrow policy in `policy-phase5-provisioner.json` through a separate privileged
+console identity, complete the documented deployment, then remove it.
 
 ## Next: finish the deployment story
 
@@ -203,33 +206,34 @@ unfixed and unreachable base-OS findings are reviewed in
 The decision already taken: **inference only for now**, with the architecture
 left able to train on EC2 later. Train locally, register, deploy the artifact.
 
-Steps, roughly half a day:
+Implemented Phase-5 steps:
 
-1. `t3.micro` (free tier), Amazon Linux 2023, with the B4 instance profile
-   attached at launch.
-2. Security group: 443 open, 22 restricted to your IP. **Never 5000** — MLflow
-   has no authentication.
+1. `t3.micro`, current Amazon Linux 2023 x86_64 AMI, with the B4 instance
+   profile attached at launch. Do not assume this account receives free tier.
+2. A dedicated security group with **no ingress**, no SSH key pair and an API
+   bound only to host loopback. Public HTTPS is a later phase.
 3. No model-store configuration and no AWS access keys in the container. The
    model is already under `/app/model`; the host role exists only to pull ECR.
-4. Verify the instance role and ECR login before debugging Docker.
+4. IMDSv2 required, encrypted delete-on-termination root storage and a
+   read-only/non-root container with dropped capabilities.
 5. Pull and run the full ECR URI pinned to the Phase-4 digest, never `:bundled`.
-6. Nginx terminating TLS on 443, proxying to the loopback-bound API.
+6. Require healthy model loading and a real prediction before writing the
+   `PHASE5_OK` console marker.
 
-⚠️ **The free-tier constraint is real.** `t3.micro` has **1 GiB RAM** — enough
-for the API plus Nginx, not for three containers and a training run. That is
-the actual reason the inference-only split was chosen, and it is worth saying
-out loud rather than presenting the split as pure design.
+`t3.micro` has **1 GiB RAM** — appropriate for trying the single API, not for
+three services or a training run. EC2, EBS and public IPv4 can all be billable;
+the design does not rely on free-tier eligibility.
 
 ### D3. Capture evidence, then tear down
 
-The point of deploying is the evidence, not the uptime. Capture a live
-`/health`, a `/predict` response, the Streamlit UI, and `docker compose ps`
-from the instance — then destroy it, so an idle instance does not consume
-credits.
+The point of deploying is the evidence, not merely the EC2 state. Capture the
+console-recorded image identity, `/health` and `/predict` responses, plus the
+role, security group and IMDS configuration. Streamlit is not in this first
+serving slice.
 
-**`teardown.sh` and `redeploy.sh` do not exist yet and should be written before
-D2, not after.** A deployment you cannot cheaply recreate is one you will leave
-running.
+`infra/ec2/terminate-inference.sh` exists and requires both the exact instance
+ID and a confirmation word. Use it when the learning host is no longer needed;
+its encrypted root volume is deleted with the instance.
 
 ### D4. Close the delivery loop
 

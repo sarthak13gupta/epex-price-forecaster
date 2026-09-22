@@ -7,10 +7,11 @@ operational reasoning rather than copying code.
 The broader repository contains training, optional S3 integration and local
 MLflow. The first production deployment is deliberately smaller: an immutable
 model is bundled with FastAPI, verified as a self-contained container, and
-published by GitHub Actions to Amazon ECR. EC2 is next. The deployed service
-needs no S3, MLflow server, database, training process or host model disk.
+published by GitHub Actions to Amazon ECR. EC2 automation is prepared. The
+deployed service needs no S3, MLflow server, database, training process or host
+model disk.
 
-## Current checkpoint — through Phase 4
+## Current checkpoint — Phase 5 prepared, AWS permission pending
 
 ```text
 MLflow model v1 (offline source)
@@ -19,7 +20,8 @@ MLflow model v1 (offline source)
   → networkless/read-only prediction contract
   → GitHub OIDC exchanges for temporary AWS credentials
   → ECR push + immutable digest + vulnerability scan
-  → EC2 pull by digest (Phase 5, not implemented yet)
+  → ECR-pull-only EC2 role + digest-pinned host (automation ready)
+  → AWS provisioning preflight blocked by missing EC2/IAM permission
 ```
 
 The published image identity is:
@@ -30,8 +32,8 @@ The published image identity is:
 ```
 
 Tags help people find an image; the digest identifies the exact bytes. The
-evidence, scan review and remaining work are in `DEPLOYMENT_PHASE_4.md` and
-`ROADMAP.md`.
+release evidence and scan review are in `DEPLOYMENT_PHASE_4.md`. The exact EC2
+design, scripts and permission preflight are in `DEPLOYMENT_PHASE_5.md`.
 
 ## 1. Conceptual anchor — Full Stack Deep Learning
 
@@ -56,7 +58,7 @@ It covers the ideas that matter here:
 | Packaged model | `PriceForecaster` bundle copied to `/app/model` |
 | Deployment container | Docker `bundled-serve` target |
 | Container registry | Amazon ECR in Tokyo |
-| Docker host | Amazon EC2 — Phase 5 |
+| Docker host | Amazon EC2 — Phase-5 automation prepared, host not yet created |
 | Runtime dependencies | XGBoost, scikit-learn, cascade code and pinned Python packages |
 | Model rollout | New model release → tested image → ECR digest |
 | Runtime model/data store | None; the model is inside the image |
@@ -86,7 +88,7 @@ This project is now between image release and initial host deployment:
 | Experiment tracking/registry | Local MLflow; source of model v1 |
 | Deployment artifact transport | Checksummed GitHub Release asset |
 | Container repository | ECR — published |
-| Production endpoint | FastAPI on EC2 — planned Phase 5 |
+| Production endpoint | FastAPI on EC2 — provisioning permission pending |
 | Image CI/release | GitHub Actions — complete through ECR |
 | Release lineage | Model hashes + Git SHA + workflow evidence + ECR digest |
 | Monitoring/retraining | Planned, not implemented |
@@ -122,10 +124,59 @@ Release       build → verify → scan → publish immutable image
 Delivery      pull chosen digest → restart → validate → rollback if needed
 ```
 
-This repository completes the release pipeline through ECR. Delivery to EC2 is
-not built yet.
+This repository completes the release pipeline through ECR and now contains the
+EC2 delivery automation. The AWS resources are not yet created because the
+configured profile failed the first read-only EC2 permission check.
 
-## 5. Phase-4 concepts to understand
+## 5. Phase-5 concepts to understand
+
+### The instance role is not the deployment identity
+
+The identity launching EC2 needs temporary provisioning permissions. The
+identity running on EC2 needs only runtime permissions. Keeping them separate
+prevents an API-host compromise from gaining permission to create or terminate
+infrastructure.
+
+AWS represents the runtime attachment with two objects:
+
+```text
+EC2 instance → instance profile → one IAM role → ECR-pull policy
+```
+
+Read [AWS: IAM roles for Amazon EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html),
+then compare `apply-ec2-ecr-pull.sh`, `trust-policy-ec2.json` and
+`policy-ecr-pull.json`.
+
+### Booted is not deployed
+
+EC2 user data installs Docker and starts the fixed digest on first boot. The
+acceptance marker is written only after the container becomes healthy and a
+real prediction succeeds. Read [AWS: EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html),
+then follow `user-data.sh` from ECR login to `PHASE5_OK`.
+
+### Layered network controls
+
+At this checkpoint both layers deny public requests:
+
+```text
+security group: no inbound packets
+Docker publish:  127.0.0.1:8000 only
+```
+
+A public IP is not equivalent to a public service. It provides outbound access
+for bootstrap, while the security group and loopback bind still block inbound
+API traffic. Phase 6 must add a deliberate HTTPS path rather than casually
+opening port 8000.
+
+### Metadata and temporary credentials
+
+The host AWS CLI obtains temporary role credentials through IMDSv2. Token use is
+required and the response hop limit is 1 because the container itself never
+needs AWS credentials. AWS generally recommends considering hop limit 2 for
+containers that do need metadata; this service deliberately chooses the more
+restrictive case. Read [AWS: configure IMDS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-IMDS-new-instances.html).
+
+## 6. Phase-4 concepts to understand
 
 ### Artifact identity
 
@@ -198,7 +249,7 @@ Neither result was hidden or suppressed. Rebuild and rescan when Debian ships a
 fix. A base-image migration is a separate release change because it must prove
 XGBoost and MLflow deserialization compatibility and reproduce predictions.
 
-## 6. Reproduce the Phase-4 evidence read-only
+## 7. Reproduce the Phase-4 evidence read-only
 
 ```bash
 gh run view 35762796347
@@ -216,7 +267,7 @@ AWS_PROFILE=admin aws ecr describe-image-scan-findings \
 
 These queries read evidence. They do not deploy the image or approve risk.
 
-## 7. Recommended study order
+## 8. Recommended study order
 
 1. Watch the Full Stack Deep Learning deployment lecture.
 2. Read the AWS Machine Learning Lens lifecycle diagram.
@@ -224,10 +275,12 @@ These queries read evidence. They do not deploy the image or approve risk.
 4. Study GitHub OIDC, then compare trust and permission policies locally.
 5. Study IAM least privilege and explain why bootstrap admin must be removed.
 6. Read the ECR scanning guide and reproduce the final scan report.
-7. Read the local documents in this order:
+7. Study EC2 roles, user data, security groups and IMDSv2.
+8. Read the local documents in this order:
    - `MODEL_RELEASE.md` — model selection and immutable export;
    - `DEPLOYMENT_PHASES_2_3.md` — bundled image and state-free contract;
    - `DEPLOYMENT_PHASE_4.md` — OIDC, ECR, digest and scan evidence;
+   - `DEPLOYMENT_PHASE_5.md` — private host design, automation and live status;
    - `CI.md` — test and release gates;
    - `DOCKER.md` — image/runtime responsibilities;
    - `ROADMAP.md` — implemented versus planned;

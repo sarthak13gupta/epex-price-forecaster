@@ -1,0 +1,63 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageOnlyThePhase5Role",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:GetRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/epex-forecaster-ec2-role"
+    },
+    {
+      "Sid": "ManageOnlyThePhase5InstanceProfile",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateInstanceProfile",
+        "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile"
+      ],
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:instance-profile/epex-forecaster-ec2-profile"
+    },
+    {
+      "Sid": "ReadEC2Inventory",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeImages",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInstanceTypeOfferings",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeVolumes",
+        "ec2:GetConsoleOutput"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LaunchAndRemovePhase5Compute",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateTags",
+        "ec2:RunInstances",
+        "ec2:TerminateInstances"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ResolveAmazonLinuxImage",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:ap-northeast-1::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+    }
+  ]
+}

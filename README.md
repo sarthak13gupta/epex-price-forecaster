@@ -235,6 +235,7 @@ serving image at all**. Details in [`docs/CI.md`](docs/CI.md).
 [`docs/MODEL_RELEASE.md`](docs/MODEL_RELEASE.md) | Phase 1: immutable model candidate and provenance |
 [`docs/DEPLOYMENT_PHASES_2_3.md`](docs/DEPLOYMENT_PHASES_2_3.md) | Bundle the model and prove isolated inference |
 [`docs/DEPLOYMENT_PHASE_4.md`](docs/DEPLOYMENT_PHASE_4.md) | Checksummed release asset, Linux/amd64 validation and ECR publication |
+[`docs/DEPLOYMENT_PHASE_5.md`](docs/DEPLOYMENT_PHASE_5.md) | Private EC2 host design, automation, security controls and live status |
 [`docs/PRODUCTION_ARCHITECTURE_LEARNING.md`](docs/PRODUCTION_ARCHITECTURE_LEARNING.md) | Junior-friendly learning path mapped to the architecture completed so far |
 [`docs/AWS_S3_EC2.md`](docs/AWS_S3_EC2.md) | S3 and EC2 from first principles, with model-interaction diagrams |
 [`docs/MLOPS.md`](docs/MLOPS.md) | Each lifecycle step: generic definition, why, how it is done here |
@@ -262,12 +263,12 @@ that survived scrutiny and findings that did not are both in there.
 | S3 read + write | ✅ Verified round-trip |
 | Tests + CI | ✅ 53 tests, 3 CI jobs |
 | ECR publish | ✅ Hardened bundled image published; digest and scan review recorded |
-| EC2 deployment | ⬜ Not deployed |
+| EC2 deployment | 🟡 Automation ready; AWS provisioning permission pending |
 
-The one-line summary: **the verified release exists in Tokyo ECR, but no EC2
-host serves it yet.** Closing that is the top of
-[`docs/ROADMAP.md`](docs/ROADMAP.md), together with removal of temporary
-administrator access and creation of the ECR-pull-only instance role.
+The one-line summary: **the verified release exists in Tokyo ECR and the private
+EC2 deployment path is ready, but no host serves it yet because the configured
+CLI identity lacks Phase-5 provisioning permission.** The exact manual step and
+evidence contract are in [`docs/DEPLOYMENT_PHASE_5.md`](docs/DEPLOYMENT_PHASE_5.md).
 
 ## Security
 
@@ -275,12 +276,12 @@ administrator access and creation of the ECR-pull-only instance role.
   (`./infra/host/git-hooks/install.sh`) plus a CI secret-scan job guard it,
   because `git add -f` bypasses `.gitignore` silently and the cost of that
   failing once is a force-push and a key rotation.
-- IAM policies in `infra/iam/` use `__BUCKET__` / `__ACCOUNT_ID__` placeholders
-  substituted at apply time, so no account identifier is committed.
+- Reusable IAM policies in `infra/iam/` use placeholders substituted at apply
+  time; deployment evidence documents the real account/resource identifiers.
 - CI authenticates to AWS by **OIDC**, not stored keys.
 - The first bundled EC2 deployment needs no S3/model credentials at all. Its
-  instance role will be ECR-pull-only; do not copy local AWS access keys into
-  the container.
+  prepared instance role is ECR-pull-only; do not copy local AWS access keys
+  into the container.
 
 ## Origin
 

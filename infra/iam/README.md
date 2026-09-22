@@ -15,7 +15,7 @@ so the repository stays publishable.
 
 | Role | Assumed by | Gets | Created by |
 |---|---|---|---|
-| `epex-forecaster-ec2-role` | the EC2 instance | Current script: S3; bundled deployment still needs an ECR-only apply path | `apply.sh` (legacy S3 path) |
+| `epex-forecaster-ec2-role` | the EC2 instance | ECR pull only for bundled serving; legacy path can instead apply S3 | `apply-ec2-ecr-pull.sh` or legacy `apply.sh` |
 | `github-actions-ecr-push` | GitHub Actions, via OIDC | ECR push only | `apply-github-oidc.sh` |
 
 They are separate because the things they trust are separate: one trusts the
@@ -31,8 +31,10 @@ mean a CI token could read the S3 bucket.
 | `policy-s3-inference-only.json` | Read the model artifact, write forecasts. Nothing else. |
 | `trust-policy-github-oidc.json` | Lets GitHub Actions **in one repository** assume the CI role. |
 | `policy-ecr-push.json` | Push images to one ECR repository. No delete actions. |
-| `policy-ecr-pull.json` | Pull that image. Phase 5 must wire it into an ECR-only instance-role apply path. |
+| `policy-ecr-pull.json` | Pull one ECR repository; used by the bundled Phase-5 role. |
+| `policy-phase5-provisioner.json` | Temporary human/control-plane permission set for Phase-5 provisioning. |
 | `apply.sh` | Creates the EC2 role + instance profile. Idempotent. |
+| `apply-ec2-ecr-pull.sh` | Creates the bundled deployment's ECR-only EC2 role + profile. Idempotent. |
 | `apply-github-oidc.sh` | Creates the OIDC provider, the ECR repository, and the CI role. Idempotent. |
 | `verify-on-instance.sh` | Run **on the instance**: proves the role works and that no static keys shadow it. |
 
@@ -85,7 +87,7 @@ for the S3 pipeline user. Keeping it out of CI entirely is the point.
 repository. That managed policy allows every action against every resource and
 must not become the steady state of a long-lived access key. Phase 4 no longer
 uses it: GitHub assumes `github-actions-ecr-push` with temporary OIDC
-credentials, and Phase 5 will give EC2 an ECR-pull-only role.
+credentials, and Phase 5 gives EC2 an ECR-pull-only role.
 
 Detach the temporary policy after account-owner approval. Decide separately
 whether the legacy offline pipeline still needs S3; `AmazonS3FullAccess` should
@@ -108,9 +110,10 @@ apply-github-oidc.sh          # OIDC provider + ECR repo + CI role
   -> run "Publish bundled inference image"
                                # verified image lands in ECR
 
-ECR-only apply path           # Phase 5: instance role + profile; not implemented yet
+apply-ec2-ecr-pull.sh         # Phase 5: ECR-only instance role + profile
   -> launch EC2 with the profile
-  -> verify-on-instance.sh    # confirms the role resolves and no keys shadow it
+  -> infra/ec2/user-data.sh   # pull digest, start, health and prediction checks
+  -> describe-inference.sh    # read-only configuration + console evidence
 ```
 
 ## The failure mode to remember
