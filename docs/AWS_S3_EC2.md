@@ -838,7 +838,7 @@ cause rather than crash-looping — the deliberate choice in `INTERNALS.md` §11
 Splitting `requirements.txt` per service would remove roughly 270 MB more —
 relevant because `t3.micro` ships an 8 GiB EBS volume by default.
 
-### 🟡 5b. Publish images to ECR — identity verified, image outstanding
+### ✅ 5b. Publish the bundled image to ECR
 
 `.github/workflows/publish.yml` builds the self-contained `bundled-serve` image
 and pushes it to ECR on a `v*` tag, authenticating by **OIDC** rather than a stored key: GitHub
@@ -857,7 +857,14 @@ It created the GitHub OIDC provider, the Tokyo scan-on-push ECR repository and
 the push role. The three repository variables are set, and read-only workflow
 run `35761192958` successfully exchanged a GitHub OIDC token for the role and
 read the repository. No image was pushed by that verification run; publishing
-the bundled image and recording its digest are still outstanding.
+was performed separately after all container gates passed.
+
+Final workflow run `35762796347` published commit `8ab83d0` and retained its
+release evidence. The ECR digest is
+`sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0`.
+The scan review removed unnecessary curl packages and every critical finding;
+two unreachable, currently unfixed base-OS findings remain documented in
+`DEPLOYMENT_PHASE_4.md`.
 
 The security boundary is one condition in the trust policy, and it is the
 single most common way an OIDC setup is misconfigured — `aud` alone would let

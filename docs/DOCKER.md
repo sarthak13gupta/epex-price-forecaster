@@ -398,11 +398,11 @@ because `NaiveForecaster` is defined there — so a `Baseline_Seasonal` champion
   installs a native engine managed by systemd; it needs a `sudo` run.
 - **Nothing pulls an image onto a host yet.** `publish.yml` pushes to ECR; the
   delivery half is unbuilt. See `ROADMAP.md`.
-- **The bundled target is not published yet.** Phase 4 now supplies its
-  gitignored model through a double-checksummed GitHub Release asset and has
-  locally validated Linux/amd64. The asset, Tokyo ECR repository, OIDC role and
-  repository variables exist, and GitHub successfully assumed the role. The
-  first image publish and ECR digest remain. See `DEPLOYMENT_PHASE_4.md`.
+- **The bundled target is published.** Phase 4 supplies its gitignored model
+  through a double-checksummed GitHub Release asset, reran the networkless,
+  read-only contract on Linux/amd64, and published the hardened result to Tokyo
+  ECR. Deploy digest `sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0`.
+  Nothing pulls it onto a host yet. See `DEPLOYMENT_PHASE_4.md`.
 
 ---
 

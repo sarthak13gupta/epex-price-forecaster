@@ -161,6 +161,12 @@ assumes the configured role, checks the STS caller and reads the configured ECR
 repository. It deliberately does not build or push an image. Run `35761192958`
 passed this contract on 2026-09-22.
 
+The full publish contract subsequently passed in run `35762796347`. Its
+retained evidence and Tokyo ECR both report digest
+`sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0`.
+The vulnerability review and residual-risk rationale are in
+`DEPLOYMENT_PHASE_4.md` §4.7.
+
 ## Bugs CI found before it ever ran
 
 Writing these checks and verifying them locally surfaced three real defects.

@@ -33,13 +33,14 @@ Last reviewed: **2026-09-22**.
 | Docker | ✅ Service images plus self-contained bundled inference target built |
 | Tests | ✅ 53, ~2 s |
 | CI | ✅ 3 jobs on every push |
-| Image publish (ECR) | 🟡 Asset and Tokyo ECR/OIDC ready; role assumption verified; image push pending |
+| Image publish (ECR) | ✅ Hardened bundled image published; digest and scan review recorded |
 | **Deployment to EC2** | ⬜ **Nothing runs on a server yet** |
 | Monitoring / drift | ⬜ Not started |
 | Continuous training | ⬜ Not started |
 
-The honest one-line summary: **the system is complete and tested, but it has
-never run anywhere except this machine.** That gap is the top of this list.
+The honest one-line summary: **the release image exists in ECR and passed a
+clean-runner contract, but no EC2 host serves it yet.** That gap is now the top
+of this list.
 
 ## Blocked on you, not on effort
 
@@ -54,8 +55,8 @@ and everything in the next section waits on them.
 | B3 | ✅ Set three repository variables | Tokyo values set; GitHub role assumption verified |
 | B4 | Add/apply an ECR-pull-only EC2 role | The current `apply.sh` is S3-oriented and does not match the bundled design |
 
-B1 is independent and can be done any time. B0–B3 are complete. The active
-chain is now **publish → B4 → deploy.**
+B1 is independent and can be done any time. B0–B3 and image publication are
+complete. The active chain is now **B4 → deploy.**
 
 ### B0. An admin AWS profile
 
@@ -146,8 +147,8 @@ using the values B2 printed:
 visible makes the wiring auditable. Until all three exist, `publish.yml` skips
 with an explanation instead of failing.
 
-**Complete 2026-09-22:** all three variables are set. This did not publish an
-image; the ECR repository remains empty until D1 runs.
+**Complete 2026-09-22:** all three variables are set. D1 subsequently published
+the verified image.
 
 Then publish:
 
@@ -171,7 +172,7 @@ works, but the running container caches the credential chain result.
 This is the only remaining gap that changes what the project *is* rather than
 how good it is.
 
-### D1. Publish an image to ECR
+### ✅ D1. Publish an image to ECR
 
 Unblocked by B2 and B3. Then tag a release and the workflow runs:
 
@@ -188,18 +189,13 @@ archive and model-tree hashes, builds and tests Linux/amd64, then pushes the sam
 tested image and records its ECR digest. The amd64 image passed the complete
 Phase-3 contract locally. See `DEPLOYMENT_PHASE_4.md`.
 
-The source changes and checksum-matching model Release asset are published on
-GitHub. The OIDC role, Tokyo ECR repository and variables exist, and GitHub has
-proved it can assume the role. What remains is to run the image-publish workflow,
-capture its digest/evidence, and review the ECR scan. Until that evidence exists,
-D1 is not complete.
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-Verifies the OIDC path end to end and produces `:bundled-<sha>` plus the ECR
-digest a deployment should pin to.
+**Complete 2026-09-22.** Workflow run
+[35762796347](https://github.com/sarthak13gupta/epex-price-forecaster/actions/runs/35762796347)
+published commit `8ab83d0`. The deployment identity is
+`sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0`.
+The initial scan's avoidable curl findings were removed; the two remaining
+unfixed and unreachable base-OS findings are reviewed in
+`DEPLOYMENT_PHASE_4.md`.
 
 ### D2. Deploy inference-only to EC2
 
@@ -212,13 +208,11 @@ Steps, roughly half a day:
    attached at launch.
 2. Security group: 443 open, 22 restricted to your IP. **Never 5000** — MLflow
    has no authentication.
-3. `.env` on the instance with `ENV=production` and the bucket name, and
-   **without** `AWS_ACCESS_KEY_ID` — boto3's chain checks environment variables
-   first, so a stray key means the instance role is never reached.
-4. `./infra/iam/verify-on-instance.sh` — proves the role resolves and that no
-   static keys shadow it, before anything else is debugged.
-5. `docker compose pull && docker compose up -d` against the ECR tag.
-6. Nginx terminating TLS on 443, proxying to the loopback-bound containers.
+3. No model-store configuration and no AWS access keys in the container. The
+   model is already under `/app/model`; the host role exists only to pull ECR.
+4. Verify the instance role and ECR login before debugging Docker.
+5. Pull and run the full ECR URI pinned to the Phase-4 digest, never `:bundled`.
+6. Nginx terminating TLS on 443, proxying to the loopback-bound API.
 
 ⚠️ **The free-tier constraint is real.** `t3.micro` has **1 GiB RAM** — enough
 for the API plus Nginx, not for three containers and a training run. That is

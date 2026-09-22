@@ -7,11 +7,12 @@ Last updated: **2026-09-22**.
 
 ## Status
 
-The Phase-4 release mechanism is **implemented and locally validated**. The
-source commits and model asset are published on GitHub. The Tokyo ECR
-repository, GitHub OIDC provider, repository-scoped push role and all three
-GitHub variables now exist. A read-only GitHub Actions run successfully assumed
-the role. Image publication and its ECR digest are the remaining Phase-4 work.
+**Phase 4 is complete.** The checksummed model release was built into a
+self-contained Linux/amd64 image, passed the Phase-3 isolation and prediction
+contract, and was published to Tokyo ECR through the repository-scoped GitHub
+OIDC role. The workflow evidence and ECR independently report the same digest.
+Scan findings were reviewed; avoidable curl findings were removed and the two
+unfixed, unreachable base-OS findings are recorded below as residual risk.
 
 The required CLIs were installed with Homebrew during this phase:
 
@@ -31,13 +32,13 @@ tests were not migrated to the Homebrew interpreter.
 | Versioned release descriptor | Complete |
 | Linux/amd64 bundled image build | Complete locally |
 | Phase-3 checks against amd64 image | Passed locally |
-| Source changes on `main` | Published; OIDC configuration tested at `25740d2` |
-| GitHub Actions build/verify/push workflow | Implemented; first image run not dispatched |
+| Source changes on `main` | Published; final image commit `8ab83d0` |
+| GitHub Actions build/verify/push workflow | Passed remotely |
 | GitHub model Release asset | Uploaded and digest-verified |
-| Tokyo ECR repository | Created; scan-on-push enabled; currently empty |
+| Tokyo ECR repository | Created; hardened bundled image published |
 | AWS OIDC provider and push role | Created; GitHub assumption verified |
 | GitHub repository variables | All three set for Tokyo |
-| ECR digest | Not available until the first successful publish |
+| ECR digest | `sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0` |
 
 ### Manual interruptions
 
@@ -52,12 +53,13 @@ Only account-bound actions require human input:
    actions passed. OIDC/ECR setup and verification are now complete. Removing
    this temporary administrator policy is the remaining manual security action;
    it is intentionally not removed without the account owner's approval.
-3. **ECR vulnerability review.** After publication, a human must decide whether
-   any scan finding is acceptable. Automation can retrieve findings but should
-   not approve security risk on the owner's behalf.
+3. **ECR vulnerability review — complete with recorded residual risk.** The
+   first scan caused a hardening change rather than accepting avoidable critical
+   findings. The final scan and rationale are recorded in §4.7.
 
-The archive upload and identity setup are complete. The next mutation is the
-first image-publish workflow; it will produce the ECR digest and scan findings.
+The archive, identity setup, image publication, digest verification and scan
+review are complete. Removing temporary administrator access remains a separate
+account-security action and is not required by the running image.
 
 ## Release architecture
 
@@ -411,39 +413,88 @@ an image to source; the ECR digest identifies the exact bytes. Rollback means
 selecting the previous successful evidence file/digest and restarting the API
 with that digest. It does not mean rebuilding an old commit.
 
+## 4.7 Remote publication and vulnerability review
+
+The first publish run completed successfully, but its scan found six OS-package
+findings: 2 critical, 2 high, 1 medium and 1 undefined. Four came from installing
+`curl` solely for internal container probes or its dependencies. Rather than
+accepting that unnecessary surface, commit `8ab83d0` removed curl and replaced
+the probes with Python's standard library. All 53 tests, Compose validation and
+the complete remote Phase-3 contract passed after the change.
+
+Final release evidence:
+
+| Field | Value |
+|---|---|
+| Workflow run | [35762796347](https://github.com/sarthak13gupta/epex-price-forecaster/actions/runs/35762796347) |
+| Result | Success |
+| Git commit | `8ab83d041327fa912f12a1e1cd4820b874e32f74` |
+| Platform | `linux/amd64` |
+| ECR repository | `955519187689.dkr.ecr.ap-northeast-1.amazonaws.com/epex-forecaster` |
+| Tags | `bundled`, `bundled-8ab83d041327fa912f12a1e1cd4820b874e32f74` |
+| Deployment digest | `sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0` |
+| Compressed image size | 289,511,806 bytes |
+| Evidence artifact | `bundled-release-evidence-8ab83d041327fa912f12a1e1cd4820b874e32f74` (90-day retention) |
+
+Both tags resolve to the recorded digest. EC2 must use the repository URI plus
+the full `@sha256:2e65...126c0` digest, not either mutable tag.
+
+### Final ECR scan
+
+Scan-on-push completed successfully. The hardening reduced the count from six
+to two and removed every critical finding:
+
+| Severity | Before | Final |
+|---|---:|---:|
+| Critical | 2 | 0 |
+| High | 2 | 1 |
+| Medium | 1 | 0 |
+| Undefined | 1 | 1 |
+
+The remaining findings are:
+
+| Finding | Package | Review decision |
+|---|---|---|
+| `CVE-2026-85091` (high) | zlib `1.3.1-1` | Debian has no fixed package yet. The flaw requires the native `gzwrite`/`gzprintf` non-blocking stale-buffer path; the API does not call that path or accept gzip files. Temporarily accepted for this inference-only release; rebuild immediately when Debian publishes a fix. |
+| `CVE-2026-82560` (undefined) | Perl `5.40.1-6+deb13u1` | Requires formatting an attacker-controlled POD document with Pod::Text. The API neither invokes Perl nor accepts POD input. Debian has no fixed package yet. Temporarily accepted and monitored. |
+
+This is not a claim that the packages are generally safe. It is a
+deployment-specific reachability decision backed by a read-only container,
+non-root user, dropped capabilities, no network during the contract test and a
+narrow JSON API. Rebuild the same commit after base-image security updates and
+do not suppress either finding from future scans. Debian's security tracker
+currently records both issues as unfixed:
+
+- <https://security-tracker.debian.org/tracker/CVE-2026-85091>
+- <https://security-tracker.debian.org/tracker/CVE-2026-82560>
+
 ## Exit criteria
 
-Phase 4 is fully complete only when all of the following evidence exists:
+Phase 4 exit evidence:
 
 - model Release asset visible at the descriptor's tag — **complete**;
-- successful remote workflow run;
-- `release-evidence.json` retained by that run;
-- ECR contains `bundled-<git-commit>`;
-- recorded ECR digest matches `aws ecr describe-images`;
-- ECR scan findings have been reviewed.
+- successful remote workflow run — **complete**;
+- `release-evidence.json` retained by that run — **complete**;
+- ECR contains `bundled-<git-commit>` — **complete**;
+- recorded ECR digest matches `aws ecr describe-images` — **complete**;
+- ECR scan findings reviewed and residual risk recorded — **complete**.
 
-Until the remaining criteria pass, the correct status is **GitHub release
-and AWS identity setup complete, image publication pending**.
+The correct status is **Phase 4 complete; digest-pinned EC2 deployment is next**.
 
 ## Deployment phases left to implement
 
 These are working phase names for continuing the same documented sequence:
 
-1. **Finish Phase 4 — publish and approve the image.** Dispatch
-   `publish.yml`, preserve `release-evidence.json`, compare the reported digest
-   with ECR, review the scan findings, and deploy by digest rather than by the
-   moving tag. After bootstrap work is over, remove the temporary
-   `AdministratorAccess` policy from `quantitative-pipeline-user`.
-2. **Phase 5 — EC2 inference host.** Create a least-privilege ECR-pull instance
+1. **Phase 5 — EC2 inference host.** Create a least-privilege ECR-pull instance
    role, launch an appropriately sized Tokyo EC2 instance, install Docker, and
    run the bundled API image pinned to its digest. The serving host needs no S3,
    MLflow server, database, model training or persistent model disk.
-3. **Phase 6 — networking and HTTPS.** Restrict SSH to the operator's address,
+2. **Phase 6 — networking and HTTPS.** Restrict SSH to the operator's address,
    expose only HTTPS publicly, keep the application port private, add Nginx and
    TLS, and validate `/health` and `/predict` externally.
-4. **Phase 7 — delivery and operations.** Automate pull/restart (for example
+3. **Phase 7 — delivery and operations.** Automate pull/restart (for example
    with SSM), make rollback select a previous digest, and add logs, metrics,
    alarms plus reproducible teardown/redeploy instructions.
-5. **Phase 8 — later ML lifecycle.** Add a model-approval gate, prediction and
+4. **Phase 8 — later ML lifecycle.** Add a model-approval gate, prediction and
    drift monitoring, and eventually retraining. These are valuable production
    capabilities but are not required for the first inference-only deployment.

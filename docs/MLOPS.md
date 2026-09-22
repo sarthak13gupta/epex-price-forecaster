@@ -709,12 +709,10 @@ know about differs from one you do not:
 double-checksummed GitHub Release asset, builds `bundled-serve` for Linux/amd64,
 runs the isolated prediction contract, and only then authenticates by **OIDC**
 to push that same tested image to ECR. It records the authoritative ECR digest
-in release evidence. This path has passed locally but has not run remotely: the
-asset is published, the Tokyo ECR/OIDC resources and repository variables are
-configured, and a read-only GitHub run has successfully assumed the AWS role.
-The first image publish is still pending; after it, the remaining delivery half
-is unchanged—nothing yet pulls the digest onto a host. See
-`DEPLOYMENT_PHASE_4.md`.
+in release evidence. This path passed remotely in run `35762796347`; the
+hardened image, digest and vulnerability review are recorded in
+`DEPLOYMENT_PHASE_4.md`. The remaining delivery half is unchanged—nothing yet
+pulls the digest onto a host.
 
 **On AWS / future.**
 
