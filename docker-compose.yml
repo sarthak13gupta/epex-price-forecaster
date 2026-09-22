@@ -50,7 +50,7 @@ services:
     cap_drop:
       - ALL
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-m", "src.utils.http_probe", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -96,7 +96,7 @@ services:
     healthcheck:
       # Asserts the MODEL loaded, not merely that the process is up. A service
       # reporting healthy with no model is worse than one plainly down.
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-m", "src.utils.http_probe", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3

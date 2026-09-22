@@ -45,16 +45,17 @@ docker run --detach \
   "$IMAGE" >/dev/null
 
 for _ in $(seq 1 30); do
-  if docker exec "$CONTAINER" curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+  if docker exec "$CONTAINER" python -m src.utils.http_probe \
+      http://localhost:8000/health >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
 
-health="$(docker exec "$CONTAINER" curl -fsS http://localhost:8000/health)"
-prediction="$(docker exec "$CONTAINER" curl -fsS \
-  -H 'Content-Type: application/json' \
-  -d '{"start_date":"2020-07-01","nuclear_avail":[29049,29466,30605,29438,26110]}' \
+health="$(docker exec "$CONTAINER" python -m src.utils.http_probe \
+  http://localhost:8000/health)"
+prediction="$(docker exec "$CONTAINER" python -m src.utils.http_probe \
+  --data '{"start_date":"2020-07-01","nuclear_avail":[29049,29466,30605,29438,26110]}' \
   http://localhost:8000/predict)"
 
 "$VERIFY_PYTHON" - "$health" "$prediction" <<'PY'
@@ -120,12 +121,13 @@ echo '{"training_process_present":false}'
 
 docker restart "$CONTAINER" >/dev/null
 for _ in $(seq 1 30); do
-  if docker exec "$CONTAINER" curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+  if docker exec "$CONTAINER" python -m src.utils.http_probe \
+      http://localhost:8000/health >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-docker exec "$CONTAINER" curl -fsS http://localhost:8000/health
+docker exec "$CONTAINER" python -m src.utils.http_probe http://localhost:8000/health
 
 docker image inspect "$IMAGE" --format \
   '{"image_id":"{{.Id}}","size_bytes":{{.Size}},"user":"{{.Config.User}}","os":"{{.Os}}","architecture":"{{.Architecture}}"}'

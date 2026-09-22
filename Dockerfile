@@ -19,7 +19,7 @@ WORKDIR /app
 # Minimal build deps. libgomp1 is required at runtime by XGBoost (OpenMP);
 # without it the import fails with an opaque shared-object error.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgomp1 curl \
+ && apt-get install -y --no-install-recommends libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 # Which dependency set to install. Defaults to the full set, so a plain
