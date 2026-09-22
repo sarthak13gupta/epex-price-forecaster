@@ -5,7 +5,7 @@
 # Run this with an ADMIN identity, not the pipeline user — that user is
 # deliberately scoped to S3 only and cannot manage IAM.
 #
-#   REPO=sarthak13gupta/quantitave_forecasting ./infra/iam/apply-github-oidc.sh
+#   REPO=sarthak13gupta/epex-price-forecaster ./infra/iam/apply-github-oidc.sh
 #
 # Idempotent: re-running updates the trust and inline policies rather than
 # failing. Nothing here is destructive.
@@ -40,6 +40,27 @@ if [ -z "$REGION" ]; then
 fi
 
 ECR_REPOSITORY="${ECR_REPOSITORY:-epex-forecaster}"
+
+# GitHub repositories created after 2026-07-15 use immutable owner and
+# repository IDs in their OIDC `sub` claim. Resolve those IDs through the
+# authenticated GitHub CLI, or accept explicit values for headless bootstrap.
+GITHUB_OWNER_ID="${GITHUB_OWNER_ID:-}"
+GITHUB_REPOSITORY_ID="${GITHUB_REPOSITORY_ID:-}"
+if [ -z "$GITHUB_OWNER_ID" ] || [ -z "$GITHUB_REPOSITORY_ID" ]; then
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+    echo "ERROR: GitHub owner/repository IDs are required for the OIDC trust policy."
+    echo "       Authenticate gh, or set GITHUB_OWNER_ID and GITHUB_REPOSITORY_ID."
+    exit 1
+  fi
+  GITHUB_OWNER_ID="$(gh api "repos/$REPO" --jq '.owner.id')"
+  GITHUB_REPOSITORY_ID="$(gh api "repos/$REPO" --jq '.id')"
+fi
+case "$GITHUB_OWNER_ID:$GITHUB_REPOSITORY_ID" in
+  *[!0-9:]*|:*|*:) echo "ERROR: GitHub owner/repository IDs must be numeric."; exit 1 ;;
+esac
+GITHUB_OWNER="${REPO%%/*}"
+GITHUB_REPOSITORY="${REPO#*/}"
+OIDC_REPO="${GITHUB_OWNER}@${GITHUB_OWNER_ID}/${GITHUB_REPOSITORY}@${GITHUB_REPOSITORY_ID}"
 
 # ------------------------------------------------------- credential preflight
 # The AWS CLI does NOT read .env — it has its own chain (env vars, then
@@ -87,6 +108,7 @@ ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 
 echo "role       : $ROLE"
 echo "repo       : $REPO"
+echo "oidc repo  : $OIDC_REPO"
 echo "region     : $REGION"
 echo "ecr repo   : $ECR_REPOSITORY"
 echo "account    : ...${ACCOUNT_ID: -4}"
@@ -95,7 +117,8 @@ echo
 subst() { sed -e "s|__ACCOUNT_ID__|${ACCOUNT_ID}|g" \
               -e "s|__REGION__|${REGION}|g" \
               -e "s|__ECR_REPOSITORY__|${ECR_REPOSITORY}|g" \
-              -e "s|__REPO__|${REPO}|g" "$1"; }
+              -e "s|__REPO__|${REPO}|g" \
+              -e "s|__OIDC_REPO__|${OIDC_REPO}|g" "$1"; }
 
 TRUST="$(mktemp)"; POLICY="$(mktemp)"
 trap 'rm -f "$TRUST" "$POLICY"' EXIT

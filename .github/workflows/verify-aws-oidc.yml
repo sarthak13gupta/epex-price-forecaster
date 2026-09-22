@@ -20,6 +20,8 @@ jobs:
       - name: Inspect the non-secret OIDC claims
         env:
           EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_OWNER_ID: ${{ github.repository_owner_id }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           python - <<'PY'
           import base64
@@ -45,7 +47,12 @@ jobs:
           print(json.dumps(visible, indent=2, sort_keys=True))
           assert claims["aud"] == "sts.amazonaws.com"
           assert claims["repository"] == os.environ["EXPECTED_REPOSITORY"]
-          assert claims["sub"].startswith(f"repo:{os.environ['EXPECTED_REPOSITORY']}:")
+          owner, repository = os.environ["EXPECTED_REPOSITORY"].split("/", 1)
+          expected_subject_prefix = (
+              f"repo:{owner}@{os.environ['EXPECTED_OWNER_ID']}/"
+              f"{repository}@{os.environ['EXPECTED_REPOSITORY_ID']}:"
+          )
+          assert claims["sub"].startswith(expected_subject_prefix)
           PY
 
       - name: Assume the repository's AWS role
