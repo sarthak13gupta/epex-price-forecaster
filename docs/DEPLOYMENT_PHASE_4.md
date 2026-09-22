@@ -228,6 +228,12 @@ After `AdministratorAccess` was attached, the 2026-09-22 preflight was repeated:
 Provisioning can therefore start from a known-empty state. Administrator access
 on a pipeline identity is a bootstrap exception, not the intended steady state.
 
+The first provisioning attempt exposed a guard defect before any resource was
+changed: `apply-github-oidc.sh` rejected the identity solely because its username
+contained `quantitative-pipeline-user`, despite the newly attached bootstrap
+policy. The guard now checks the real `iam:ListRoles` capability instead. IAM
+authorization is policy-based; a username is not evidence of current privilege.
+
 ## 4.4 What the workflow does
 
 `.github/workflows/publish.yml` runs manually or for application tags matching

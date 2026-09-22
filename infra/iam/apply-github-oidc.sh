@@ -63,22 +63,24 @@ NOCREDS
   exit 1
 fi
 
-CALLER_ARN="$(printf '%s' "$CALLER" | sed -n 's/.*"Arn": *"\([^"]*\)".*/\1/p')"
-case "$CALLER_ARN" in
-  *quantitative-pipeline-user*)
-    cat <<'WRONGUSER'
-ERROR: you are authenticated as the pipeline user, which is scoped to S3 only
-       and cannot manage IAM. It will fail partway through.
+# Test the permission needed by the workflow rather than inferring permission
+# from an IAM username. A user can gain or lose policies without its name
+# changing; rejecting `quantitative-pipeline-user` after a temporary bootstrap
+# policy was attached produced a false negative.
+if ! aws iam list-roles --max-items 1 >/dev/null 2>&1; then
+  CALLER_ARN="$(printf '%s' "$CALLER" | sed -n 's/.*"Arn": *"\([^"]*\)".*/\1/p')"
+  cat <<EOF
+ERROR: ${CALLER_ARN:-the current AWS identity} cannot list IAM roles.
+       This script needs an administrator/bootstrap identity that can manage
+       IAM OIDC providers, roles, inline policies and ECR repositories.
 
-  Switch to an admin identity:
+  Switch to an authorized profile, for example:
 
-      aws configure --profile admin
-      unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY   # env vars beat profiles
+      unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
       export AWS_PROFILE=admin
-WRONGUSER
-    exit 1
-    ;;
-esac
+EOF
+  exit 1
+fi
 
 # The account id is read from the caller, never committed.
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
