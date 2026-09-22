@@ -4,7 +4,7 @@ A single status page. Every other doc describes how something works; this one
 describes **what does not exist yet**, why it is ordered the way it is, and
 which items are blocked on a decision rather than on effort.
 
-Last reviewed: **2026-09-20**.
+Last reviewed: **2026-09-22**.
 
 - [Where the project stands](#where-the-project-stands)
 - [Blocked on you, not on effort](#blocked-on-you-not-on-effort)
@@ -33,7 +33,7 @@ Last reviewed: **2026-09-20**.
 | Docker | ✅ Service images plus self-contained bundled inference target built |
 | Tests | ✅ 53, ~2 s |
 | CI | ✅ 3 jobs on every push |
-| Image publish (ECR) | 🟡 Bundled workflow locally validated; asset, role and remote run pending |
+| Image publish (ECR) | 🟡 Asset and Tokyo ECR/OIDC ready; role assumption verified; image push pending |
 | **Deployment to EC2** | ⬜ **Nothing runs on a server yet** |
 | Monitoring / drift | ⬜ Not started |
 | Continuous training | ⬜ Not started |
@@ -48,14 +48,14 @@ and everything in the next section waits on them.
 
 | # | Action | Why it needs you |
 |---|---|---|
-| B0 | Configure an **admin** AWS profile | The AWS CLI is installed; what is missing is an identity that can manage IAM |
+| B0 | ✅ Configure an **admin** AWS profile | Temporarily satisfied with bootstrap access; remove it after setup |
 | B1 | `sudo ./infra/host/install-docker-engine.sh` | No passwordless sudo here |
-| B2 | `./infra/iam/apply-github-oidc.sh` | Creates an IAM role and OIDC provider |
-| B3 | Set three repository variables | Repository settings; B2 prints the values |
-| B4 | `POLICY=inference-only ./infra/iam/apply.sh` | Creates the EC2 instance role |
+| B2 | ✅ `./infra/iam/apply-github-oidc.sh` | OIDC provider, Tokyo ECR repository and push role created |
+| B3 | ✅ Set three repository variables | Tokyo values set; GitHub role assumption verified |
+| B4 | Add/apply an ECR-pull-only EC2 role | The current `apply.sh` is S3-oriented and does not match the bundled design |
 
-B1 is independent and can be done any time. The rest is a chain:
-**B0 → B2 → B3 → publish → B4 → deploy.**
+B1 is independent and can be done any time. B0–B3 are complete. The active
+chain is now **publish → B4 → deploy.**
 
 ### B0. An admin AWS profile
 
@@ -63,16 +63,15 @@ The AWS CLI **does not read `.env`.** It has its own credential chain —
 environment variables, then `~/.aws/credentials`, then an instance role — so
 the project's `.env` is invisible to it.
 
-More importantly, B2 and B4 need an **admin** identity. The project's
-`quantitative-pipeline-user` is deliberately scoped to S3 only and gets
-`AccessDenied` on every IAM call. Both scripts now detect this and refuse up
-front rather than failing halfway through a partial change.
+More importantly, IAM bootstrap actions need an identity authorized to manage
+the exact IAM and ECR resources. The preferred design is a separate bootstrap
+administrator, not the long-lived pipeline identity.
 
 ```bash
 aws configure --profile admin        # admin access key, secret, region
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 export AWS_PROFILE=admin
-aws sts get-caller-identity          # confirm it is NOT the pipeline user
+aws sts get-caller-identity          # confirm the exact identity and account
 ```
 
 The `unset` matters: **environment variables beat `AWS_PROFILE`**, so leftover
@@ -122,6 +121,12 @@ Creates the OIDC identity provider, the ECR repository (scan-on-push enabled)
 and the push role, then prints the three values for B3. Idempotent — re-running
 updates the policies rather than failing.
 
+**Complete 2026-09-22:** these resources now exist in `ap-northeast-1` where
+regional, and the role trust uses GitHub's immutable numeric owner/repository
+subject. Read-only workflow run
+[35761192958](https://github.com/sarthak13gupta/epex-price-forecaster/actions/runs/35761192958)
+successfully assumed the role and read the ECR repository.
+
 The region comes from `.env` and is **not** guessed: creating the ECR
 repository in the wrong region surfaces much later as an image the instance
 cannot find.
@@ -134,12 +139,15 @@ using the values B2 printed:
 | Variable | Value |
 |---|---|
 | `AWS_ROLE_ARN` | `arn:aws:iam::<account>:role/github-actions-ecr-push` |
-| `AWS_REGION` | your region |
+| `AWS_REGION` | `ap-northeast-1` |
 | `ECR_REPOSITORY` | `epex-forecaster` |
 
 **Variables, not secrets** — a role ARN is not a credential, and keeping it
 visible makes the wiring auditable. Until all three exist, `publish.yml` skips
 with an explanation instead of failing.
+
+**Complete 2026-09-22:** all three variables are set. This did not publish an
+image; the ECR repository remains empty until D1 runs.
 
 Then publish:
 
@@ -149,13 +157,11 @@ git tag v0.1.0 && git push origin v0.1.0
 
 ### B4. The EC2 instance role
 
-```bash
-POLICY=inference-only ./infra/iam/apply.sh
-```
-
-`inference-only` reads the model artifact and writes forecasts, nothing else.
-`POLICY=forecaster` grants the full pipeline; use it only when training moves
-onto the instance.
+The self-contained bundled image needs only `policy-ecr-pull.json`: it does not
+need S3 model access or forecast-write permissions. The current `apply.sh`
+always builds an S3 policy and requires a bucket, so it must not be used as-is
+for this deployment. Phase 5 must add an ECR-only apply path that creates the
+EC2 role/profile and substitutes the Tokyo repository ARN.
 
 Attach `epex-forecaster-ec2-profile` **at instance launch** — attaching later
 works, but the running container caches the credential chain result.
@@ -182,10 +188,11 @@ archive and model-tree hashes, builds and tests Linux/amd64, then pushes the sam
 tested image and records its ECR digest. The amd64 image passed the complete
 Phase-3 contract locally. See `DEPLOYMENT_PHASE_4.md`.
 
-The source changes and checksum-matching model Release asset are now published
-on GitHub. What remains is AWS external state: create the OIDC role/ECR
-repository, set the three repository variables, and capture the first successful
-workflow's digest. Until that evidence exists, D1 is not complete.
+The source changes and checksum-matching model Release asset are published on
+GitHub. The OIDC role, Tokyo ECR repository and variables exist, and GitHub has
+proved it can assume the role. What remains is to run the image-publish workflow,
+capture its digest/evidence, and review the ECR scan. Until that evidence exists,
+D1 is not complete.
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0

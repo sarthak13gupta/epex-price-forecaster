@@ -400,8 +400,9 @@ because `NaiveForecaster` is defined there — so a `Baseline_Seasonal` champion
   delivery half is unbuilt. See `ROADMAP.md`.
 - **The bundled target is not published yet.** Phase 4 now supplies its
   gitignored model through a double-checksummed GitHub Release asset and has
-  locally validated Linux/amd64. The asset upload, AWS OIDC setup and first
-  remote workflow/ECR digest remain. See `DEPLOYMENT_PHASE_4.md`.
+  locally validated Linux/amd64. The asset, Tokyo ECR repository, OIDC role and
+  repository variables exist, and GitHub successfully assumed the role. The
+  first image publish and ECR digest remain. See `DEPLOYMENT_PHASE_4.md`.
 
 ---
 

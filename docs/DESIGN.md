@@ -41,7 +41,7 @@ suite and pipelines in `CI.md`. **`RUNBOOK.md` is how to run all of it**, and
 | **Streamlit frontend** | ✅ **Built** — 3 tabs, tested headlessly | `INTERNALS.md` §12 |
 | **Test suite** | ✅ **Built** — 53 tests, ~2 s, no data or credentials needed | **`CI.md`** |
 | **CI (GitHub Actions)** | ✅ **Built** — tests on two dependency sets, image build + container smoke | **`CI.md`** |
-| **Image publish to ECR** | 🟡 Bundled flow built and amd64-validated; external asset/OIDC/run pending | `DEPLOYMENT_PHASE_4.md` |
+| **Image publish to ECR** | 🟡 Asset and Tokyo OIDC/ECR ready and verified; first image publish pending | `DEPLOYMENT_PHASE_4.md` |
 | EC2 deployment | ⬜ Not deployed | `AWS_S3_EC2.md` Part 5 |
 
 ---

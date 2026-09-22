@@ -838,33 +838,35 @@ cause rather than crash-looping — the deliberate choice in `INTERNALS.md` §11
 Splitting `requirements.txt` per service would remove roughly 270 MB more —
 relevant because `t3.micro` ships an 8 GiB EBS volume by default.
 
-### 🟡 5b. Publish images to ECR — workflow built, role outstanding
+### 🟡 5b. Publish images to ECR — identity verified, image outstanding
 
-`.github/workflows/publish.yml` builds `:serve` and `:ui` and pushes them to
-ECR on a `v*` tag, authenticating by **OIDC** rather than a stored key: GitHub
+`.github/workflows/publish.yml` builds the self-contained `bundled-serve` image
+and pushes it to ECR on a `v*` tag, authenticating by **OIDC** rather than a stored key: GitHub
 mints a short-lived token per run and AWS trades it for temporary credentials
 scoped to this one repository. Nothing long-lived is stored as a GitHub secret —
 which matters concretely, because `.env` here holds a real access key pair and
 the whole point is that CI never needs one.
 
-What is outstanding is one admin action, because the pipeline IAM user is
-deliberately S3-scoped and gets `AccessDenied` on every IAM call:
+The one-time administrator action was completed on 2026-09-22:
 
 ```bash
 REPO=sarthak13gupta/epex-price-forecaster ./infra/iam/apply-github-oidc.sh
 ```
 
-It creates the OIDC provider, the ECR repository (scan-on-push enabled) and the
-push role, then prints the three repository variables to set. Idempotent.
+It created the GitHub OIDC provider, the Tokyo scan-on-push ECR repository and
+the push role. The three repository variables are set, and read-only workflow
+run `35761192958` successfully exchanged a GitHub OIDC token for the role and
+read the repository. No image was pushed by that verification run; publishing
+the bundled image and recording its digest are still outstanding.
 
 The security boundary is one condition in the trust policy, and it is the
 single most common way an OIDC setup is misconfigured — `aud` alone would let
 **any** GitHub repository on the internet assume the role. See
 `infra/iam/README.md`.
 
-Each image gets a moving tag (`:serve`) and an immutable one
-(`:serve-<sha>`). **Pin deployments to the SHA tag** — rollback then means
-naming the previous commit.
+The image gets a moving tag (`:bundled`) and a commit-specific one
+(`:bundled-<sha>`). **Pin deployments to the returned ECR digest** — rollback
+then means selecting the previous verified digest without rebuilding it.
 
 ### ⬜ 6. Deploy (half a day)
 

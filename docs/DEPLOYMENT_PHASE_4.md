@@ -8,8 +8,10 @@ Last updated: **2026-09-22**.
 ## Status
 
 The Phase-4 release mechanism is **implemented and locally validated**. The
-source commits and model asset are published on GitHub. AWS publication is
-pending the administrator profile, OIDC role and repository variables.
+source commits and model asset are published on GitHub. The Tokyo ECR
+repository, GitHub OIDC provider, repository-scoped push role and all three
+GitHub variables now exist. A read-only GitHub Actions run successfully assumed
+the role. Image publication and its ECR digest are the remaining Phase-4 work.
 
 The required CLIs were installed with Homebrew during this phase:
 
@@ -29,10 +31,12 @@ tests were not migrated to the Homebrew interpreter.
 | Versioned release descriptor | Complete |
 | Linux/amd64 bundled image build | Complete locally |
 | Phase-3 checks against amd64 image | Passed locally |
-| Source changes on `main` | Published through commit `30b1f4d` |
-| GitHub Actions build/verify/push workflow | Implemented, awaiting AWS setup |
+| Source changes on `main` | Published; OIDC configuration tested at `25740d2` |
+| GitHub Actions build/verify/push workflow | Implemented; first image run not dispatched |
 | GitHub model Release asset | Uploaded and digest-verified |
-| AWS OIDC role and repository variables | Account-owner setup still required |
+| Tokyo ECR repository | Created; scan-on-push enabled; currently empty |
+| AWS OIDC provider and push role | Created; GitHub assumption verified |
+| GitHub repository variables | All three set for Tokyo |
 | ECR digest | Not available until the first successful publish |
 
 ### Manual interruptions
@@ -41,18 +45,19 @@ Only account-bound actions require human input:
 
 1. **GitHub device authorization — complete.** `gh auth login --web` was
    approved in the browser. No password or token was put in project files.
-2. **AWS administrator authentication — complete temporarily.** The `admin`
+2. **AWS administrator authentication — bootstrap complete temporarily.** The `admin`
    profile uses `ap-northeast-1` and resolves to `quantitative-pipeline-user`,
    which now has the AWS-managed `AdministratorAccess` policy. IAM role/OIDC
    reads, Tokyo ECR reads, and policy simulation for the required create/push
-   actions passed. Remove this temporary administrator policy after OIDC/ECR
-   setup and verification.
+   actions passed. OIDC/ECR setup and verification are now complete. Removing
+   this temporary administrator policy is the remaining manual security action;
+   it is intentionally not removed without the account owner's approval.
 3. **ECR vulnerability review.** After publication, a human must decide whether
    any scan finding is acceptable. Automation can retrieve findings but should
    not approve security risk on the owner's behalf.
 
-The archive upload is complete. Repository variables, workflow dispatch and ECR
-digest verification can proceed after item 2 is satisfied.
+The archive upload and identity setup are complete. The next mutation is the
+first image-publish workflow; it will produce the ECR digest and scan findings.
 
 ## Release architecture
 
@@ -180,6 +185,18 @@ export AWS_PROFILE=admin
 aws sts get-caller-identity
 
 REPO=sarthak13gupta/epex-price-forecaster \
+AWS_DEFAULT_REGION=ap-northeast-1 \
+  ./infra/iam/apply-github-oidc.sh
+```
+
+If `gh` authentication is unavailable in a headless shell, pass the immutable
+IDs already verified from GitHub instead:
+
+```bash
+REPO=sarthak13gupta/epex-price-forecaster \
+AWS_DEFAULT_REGION=ap-northeast-1 \
+GITHUB_OWNER_ID=74540123 \
+GITHUB_REPOSITORY_ID=1360961812 \
   ./infra/iam/apply-github-oidc.sh
 ```
 
@@ -199,6 +216,40 @@ Set the three values printed by the script as GitHub repository **variables**:
 | `ECR_REPOSITORY` | Repository name, normally `epex-forecaster` |
 
 No AWS access key is stored in GitHub.
+
+The variables were applied with GitHub CLI:
+
+```bash
+gh variable set AWS_ROLE_ARN \
+  --body 'arn:aws:iam::955519187689:role/github-actions-ecr-push'
+gh variable set AWS_REGION --body 'ap-northeast-1'
+gh variable set ECR_REPOSITORY --body 'epex-forecaster'
+gh variable list
+```
+
+### Applied AWS and GitHub state — 2026-09-22
+
+The following resources were created in account ending `7689`:
+
+| Resource | Applied value |
+|---|---|
+| AWS region | `ap-northeast-1` (Tokyo) |
+| OIDC provider | `token.actions.githubusercontent.com` |
+| ECR repository | `epex-forecaster` |
+| IAM role | `github-actions-ecr-push` |
+| Inline policy | `ecr-push` (push to this repository, no delete) |
+
+The following repository variables were set on
+`sarthak13gupta/epex-price-forecaster`:
+
+| Variable | Value |
+|---|---|
+| `AWS_ROLE_ARN` | `arn:aws:iam::955519187689:role/github-actions-ecr-push` |
+| `AWS_REGION` | `ap-northeast-1` |
+| `ECR_REPOSITORY` | `epex-forecaster` |
+
+These values are configuration, not credentials. The workflow receives
+short-lived AWS credentials only after GitHub presents a matching OIDC token.
 
 ### AWS permission preflight history
 
@@ -233,6 +284,46 @@ changed: `apply-github-oidc.sh` rejected the identity solely because its usernam
 contained `quantitative-pipeline-user`, despite the newly attached bootstrap
 policy. The guard now checks the real `iam:ListRoles` capability instead. IAM
 authorization is policy-based; a username is not evidence of current privilege.
+
+### OIDC verification and immutable subject correction
+
+The first verification run reached AWS but was denied
+`sts:AssumeRoleWithWebIdentity`. The original trust condition expected the
+legacy subject form `repo:owner/repository:*`. Inspection of only the non-secret
+claims—not the signed token—showed that this repository uses GitHub's immutable
+subject form:
+
+```text
+repo:sarthak13gupta@74540123/epex-price-forecaster@1360961812:ref:refs/heads/main
+```
+
+The trust policy and bootstrap script were corrected to use the numeric owner
+and repository IDs. This resists repository rename/reuse ambiguity while still
+allowing this repository's workflows. The live AWS condition is:
+
+```text
+repo:sarthak13gupta@74540123/epex-price-forecaster@1360961812:*
+```
+
+The separate `.github/workflows/verify-aws-oidc.yml` workflow then passed all
+four gates: claim validation, role assumption, STS caller validation and ECR
+repository read. Evidence:
+
+```bash
+gh workflow run verify-aws-oidc.yml --ref main
+gh run watch 35761192958 --exit-status
+```
+
+| Field | Value |
+|---|---|
+| Run | [35761192958](https://github.com/sarthak13gupta/epex-price-forecaster/actions/runs/35761192958) |
+| Result | Success |
+| Tested commit | `25740d21800a5dd9ecdce2cd9cc06706fa2767bd` |
+| AWS operations | STS identity and ECR read only |
+| ECR image count after test | `0` |
+
+Thus GitHub can assume the AWS role, but this test did not build or push an
+image. That separation makes authentication failures cheap to diagnose.
 
 ## 4.4 What the workflow does
 
@@ -332,4 +423,27 @@ Phase 4 is fully complete only when all of the following evidence exists:
 - ECR scan findings have been reviewed.
 
 Until the remaining criteria pass, the correct status is **GitHub release
-complete, AWS publication pending**.
+and AWS identity setup complete, image publication pending**.
+
+## Deployment phases left to implement
+
+These are working phase names for continuing the same documented sequence:
+
+1. **Finish Phase 4 — publish and approve the image.** Dispatch
+   `publish.yml`, preserve `release-evidence.json`, compare the reported digest
+   with ECR, review the scan findings, and deploy by digest rather than by the
+   moving tag. After bootstrap work is over, remove the temporary
+   `AdministratorAccess` policy from `quantitative-pipeline-user`.
+2. **Phase 5 — EC2 inference host.** Create a least-privilege ECR-pull instance
+   role, launch an appropriately sized Tokyo EC2 instance, install Docker, and
+   run the bundled API image pinned to its digest. The serving host needs no S3,
+   MLflow server, database, model training or persistent model disk.
+3. **Phase 6 — networking and HTTPS.** Restrict SSH to the operator's address,
+   expose only HTTPS publicly, keep the application port private, add Nginx and
+   TLS, and validate `/health` and `/predict` externally.
+4. **Phase 7 — delivery and operations.** Automate pull/restart (for example
+   with SSM), make rollback select a previous digest, and add logs, metrics,
+   alarms plus reproducible teardown/redeploy instructions.
+5. **Phase 8 — later ML lifecycle.** Add a model-approval gate, prediction and
+   drift monitoring, and eventually retraining. These are valuable production
+   capabilities but are not required for the first inference-only deployment.

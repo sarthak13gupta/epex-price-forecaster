@@ -123,7 +123,7 @@ Configuration is three repository **variables**, not secrets:
 | Variable | Example |
 |---|---|
 | `AWS_ROLE_ARN` | `arn:aws:iam::<account>:role/github-actions-ecr-push` |
-| `AWS_REGION` | `eu-west-1` |
+| `AWS_REGION` | `ap-northeast-1` |
 | `ECR_REPOSITORY` | `epex-forecaster` |
 
 A role ARN is not a credential, and keeping it visible makes the wiring
@@ -154,6 +154,12 @@ Run `infra/iam/apply-github-oidc.sh` once to create the OIDC provider, the ECR
 repository and the role; it prints the three variable values to paste in. The
 end-to-end operator procedure and current evidence are in
 [`DEPLOYMENT_PHASE_4.md`](DEPLOYMENT_PHASE_4.md).
+
+Before paying the cost of an image build, `.github/workflows/verify-aws-oidc.yml`
+can be dispatched manually. It validates the immutable GitHub OIDC claims,
+assumes the configured role, checks the STS caller and reads the configured ECR
+repository. It deliberately does not build or push an image. Run `35761192958`
+passed this contract on 2026-09-22.
 
 ## Bugs CI found before it ever ran
 
