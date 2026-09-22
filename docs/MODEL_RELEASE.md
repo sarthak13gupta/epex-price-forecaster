@@ -144,5 +144,7 @@ prediction fixture without S3, an MLflow server, a database, host volumes, AWS
 credentials or a training process.
 
 See [`DEPLOYMENT_PHASES_2_3.md`](DEPLOYMENT_PHASES_2_3.md) for the architecture,
-commands, acceptance evidence and the remaining GitHub Actions/ECR handoff.
-That is the boundary between **model release** and **application image release**.
+commands and acceptance evidence. The GitHub Actions/ECR handoff subsequently
+completed in Phase 4; `DEPLOYMENT_PHASE_4.md` records the released digest and
+scan review. That is the boundary between **model release** and **application
+image release**.

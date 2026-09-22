@@ -1,186 +1,238 @@
 # Production ML Architecture — Learning Guide
 
-This guide collects trusted, production-oriented resources for understanding the
-architecture used by this project. The emphasis is on system boundaries,
-lifecycles, flows and operational requirements rather than copying code.
+This is the junior-friendly study companion for the architecture actually built
+in this repository. It emphasizes system boundaries, release evidence and
+operational reasoning rather than copying code.
 
-The best fit is not a single "copy this tutorial" walkthrough. This project
-combines a self-hosted inference API, MLflow, S3, Docker, GitHub Actions, ECR
-and EC2. The resources below provide one strong conceptual anchor followed by
-official references for the two most important implementation domains: AWS and
-MLflow.
+The broader repository contains training, optional S3 integration and local
+MLflow. The first production deployment is deliberately smaller: an immutable
+model is bundled with FastAPI, verified as a self-contained container, and
+published by GitHub Actions to Amazon ECR. EC2 is next. The deployed service
+needs no S3, MLflow server, database, training process or host model disk.
 
-## 1. Primary resource — Full Stack Deep Learning
+## Current checkpoint — through Phase 4
+
+```text
+MLflow model v1 (offline source)
+  → deterministic checksummed GitHub Release asset
+  → GitHub Actions builds Linux/amd64
+  → networkless/read-only prediction contract
+  → GitHub OIDC exchanges for temporary AWS credentials
+  → ECR push + immutable digest + vulnerability scan
+  → EC2 pull by digest (Phase 5, not implemented yet)
+```
+
+The published image identity is:
+
+```text
+955519187689.dkr.ecr.ap-northeast-1.amazonaws.com/epex-forecaster
+@sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0
+```
+
+Tags help people find an image; the digest identifies the exact bytes. The
+evidence, scan review and remaining work are in `DEPLOYMENT_PHASE_4.md` and
+`ROADMAP.md`.
+
+## 1. Conceptual anchor — Full Stack Deep Learning
 
 Start with [Full Stack Deep Learning — Lecture 5: Deployment](https://fullstackdeeplearning.com/course/2022/lecture-5-deployment/).
 
-This is the closest conceptual match to the project. It covers:
+It covers the ideas that matter here:
 
-- separating the UI from the model service;
 - online model-as-a-service versus batch inference;
 - REST prediction APIs;
-- loading and packaging models with their dependencies;
+- packaging models with their dependencies;
 - Docker images, hosts and registries;
 - CPU versus GPU serving;
-- scaling and concurrency;
-- model rollout and rollback strategies;
-- when simple infrastructure is sufficient and when managed services become
-  useful.
-
-Its recommendation to begin with a simple deployment and add complexity only
-when requirements demand it matches this project's decision to use EC2 and
-Docker Compose rather than Kubernetes.
+- rollout and rollback;
+- starting with simple infrastructure and adding complexity only when required.
 
 ### Translation into this project
 
 | General concept | This project |
 |---|---|
-| User-facing application | Streamlit |
 | Model-as-a-service | FastAPI |
-| REST prediction endpoint | `POST /predict` |
-| Packaged inference program | `PriceForecaster` MLflow bundle |
-| Container images | Docker `serve`, `ui` and training targets |
-| Container registry | Amazon ECR |
-| Docker host | Amazon EC2 |
-| Model dependencies | XGBoost, scikit-learn, cascade code and pinned Python packages |
-| Model rollout | MLflow model version/alias plus API restart |
-| Durable application data | Amazon S3 |
-| Simple initial deployment | One EC2 instance with Docker Compose |
+| Prediction endpoint | `POST /predict` |
+| Packaged model | `PriceForecaster` bundle copied to `/app/model` |
+| Deployment container | Docker `bundled-serve` target |
+| Container registry | Amazon ECR in Tokyo |
+| Docker host | Amazon EC2 — Phase 5 |
+| Runtime dependencies | XGBoost, scikit-learn, cascade code and pinned Python packages |
+| Model rollout | New model release → tested image → ECR digest |
+| Runtime model/data store | None; the model is inside the image |
+| Initial deployment | One EC2 instance running the digest-pinned API |
 | Later scaling option | ECS/Fargate, SageMaker or multiple instances |
 
-While watching, translate the generic "model service" into this system's
-FastAPI container.
-
-## 2. Production architecture reference — AWS Machine Learning Lens
+## 2. Mature lifecycle reference — AWS Machine Learning Lens
 
 Read these official AWS sections:
 
 1. [ML lifecycle architecture diagram](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/architecture-diagram.html)
 2. [Model deployment](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/deployment.html)
 
-The architecture describes the standard production lifecycle:
+The mature lifecycle is:
 
 ```text
-Data
-  ↓
-Prepare and engineer features
-  ↓
-Train → tune → evaluate
-  ↓
-Register model and artifacts
-  ↓
-Deploy inference service
-  ↓
-Monitor predictions and performance
-  ↓
-Trigger retraining
+Data → prepare → train → evaluate → register → release → serve
+  ↑                                                       ↓
+  └──────────── monitor → approve → retrain ──────────────┘
 ```
 
-It identifies the model registry, artifact storage, container registry,
-inference endpoint, CI/CD pipeline, scheduler, monitoring, lineage and
-retraining feedback loop. Those are the same conceptual boxes found in this
-repository, although the AWS guide often implements them with SageMaker rather
-than self-hosted MLflow.
+This project is now between image release and initial host deployment:
 
-### Translation into this project
-
-| AWS lifecycle component | Current project implementation |
+| Lifecycle component | Current implementation |
 |---|---|
-| Data lake | S3 prefixes |
-| Data preparation pipeline | Preprocessing and feature modules |
-| Training pipeline | `train_pipeline.py` |
-| Experiment tracking | MLflow runs |
-| Model registry | MLflow Model Registry |
-| Model artifact storage | S3 `mlflow-artifacts/` |
-| Container repository | ECR |
-| Production endpoint | FastAPI on EC2 |
-| Application | Streamlit |
-| CI pipeline | GitHub Actions `ci.yml` |
-| Image-release pipeline | GitHub Actions `publish.yml` |
-| Scheduled retraining | Planned, not implemented |
-| Production monitoring | Planned, not implemented |
-| Deployment gate | Planned, not implemented |
-| Lineage | Partial: Git, MLflow metadata, image SHA and S3 objects |
+| Data preparation and training | Local pipeline; optional S3 paths |
+| Experiment tracking/registry | Local MLflow; source of model v1 |
+| Deployment artifact transport | Checksummed GitHub Release asset |
+| Container repository | ECR — published |
+| Production endpoint | FastAPI on EC2 — planned Phase 5 |
+| Image CI/release | GitHub Actions — complete through ECR |
+| Release lineage | Model hashes + Git SHA + workflow evidence + ECR digest |
+| Monitoring/retraining | Planned, not implemented |
 
-This reference places the repository between "model development complete" and
-"initial deployment": registration and packaging exist, while production
-monitoring, automated retraining and the feedback loop do not.
+## 3. Where MLflow belongs—and where it does not
 
-## 3. Exact component reference — MLflow architecture
+Read [MLflow's Architecture Overview](https://mlflow.org/docs/latest/self-hosting/architecture/overview/).
 
-Read [MLflow's official Architecture Overview](https://mlflow.org/docs/latest/self-hosting/architecture/overview/).
-
-It explains this essential separation:
+MLflow normally separates a tracking server, metadata backend and artifact
+store. Those remain useful for offline experimentation and registration. They
+are deliberately absent from the first serving host:
 
 ```text
-MLflow tracking server
-        │
-        ├── Backend store
-        │     experiment metadata
-        │     parameters, metrics, runs and model versions
-        │     SQLite now; PostgreSQL/RDS later
-        │
-        └── Artifact store
-              model bundles, plots and result files
-              S3 in production
+offline:  MLflow model v1 → export once
+runtime:  /app/model inside the verified image → predict locally
 ```
 
-The stores are not interchangeable:
+This removes three request-time failure modes: tracking-server availability,
+database availability and remote artifact download. It also means a new model
+requires a new verified image rather than changing an alias behind a running
+service.
 
-- SQLite/PostgreSQL stores relatively small structured metadata.
-- S3 stores large objects such as model bundles, SHAP plots and result files.
-- The MLflow server provides the API and UI used to access that information.
+## 4. CI, release and delivery are different pipelines
 
-This distinction also exposes the current durability gap: S3 objects survive
-EC2 termination, but an MLflow SQLite database on an unsnapshotted EBS volume
-does not.
+Read the overview in [AWS: Build an end-to-end MLOps pipeline using GitHub Actions](https://aws.amazon.com/blogs/machine-learning/build-an-end-to-end-mlops-pipeline-using-amazon-sagemaker-pipelines-github-and-github-actions/).
 
-## 4. CI/CD reference
-
-For release-flow concepts, read the architecture and solution-overview sections
-of [Build an end-to-end MLOps pipeline using GitHub and GitHub Actions — AWS](https://aws.amazon.com/blogs/machine-learning/build-an-end-to-end-mlops-pipeline-using-amazon-sagemaker-pipelines-github-and-github-actions/).
-
-Do not follow its SageMaker-specific implementation literally. Use it to
-understand three separate pipelines:
+Do not copy its SageMaker implementation literally. Learn the separation:
 
 ```text
-Code CI
-    test code and build images
-
-Model pipeline
-    prepare → train → evaluate → register
-
-Release pipeline
-    approve → deploy → validate → promote
+Code CI       test source and container contracts
+Model flow    train → evaluate → register/export
+Release       build → verify → scan → publish immutable image
+Delivery      pull chosen digest → restart → validate → rollback if needed
 ```
 
-This repository performs the first pipeline and much of the second. Its publish
-workflow is designed to push Docker images into ECR, but the final automated
-delivery step—pulling the chosen image onto EC2 and safely restarting it—is not
-built yet.
+This repository completes the release pipeline through ECR. Delivery to EC2 is
+not built yet.
 
-## 5. Recommended study order
+## 5. Phase-4 concepts to understand
 
-1. Watch the Full Stack Deep Learning deployment lecture for the mental model.
-2. Study the AWS lifecycle architecture diagram for the complete production
-   loop.
-3. Read the MLflow architecture overview to understand metadata versus
-   artifacts.
-4. Read only the solution overview of the AWS GitHub Actions article to
-   understand build, registration, approval and deployment boundaries.
-5. Return to the project documentation in this order:
-   - `DESIGN.md` — service topology and the served model artifact;
-   - `MODEL_RELEASE.md` — the concrete model selected, exported and verified
-     for deployment;
-   - `DEPLOYMENT_PHASES_2_3.md` — how that immutable model is bundled into the
-     API image and validated without external state;
-   - `DEPLOYMENT_PHASE_4.md` — how the verified Linux/amd64 image moves through
-     GitHub Actions and OIDC into ECR;
-   - `AWS_S3_EC2.md` — state versus compute and the target AWS topology;
-   - `DOCKER.md` — container responsibilities;
-   - `CI.md` — test and image-release flows;
-   - `ROADMAP.md` — implemented versus planned.
+### Artifact identity
 
-The Full Stack Deep Learning lecture is the conceptual anchor. The AWS Machine
-Learning Lens describes a mature production lifecycle. The local documentation
-shows the deliberately smaller implementation selected for this project.
+A filename is not identity because it can be replaced. This project verifies:
+
+1. archive SHA-256 — downloaded bytes;
+2. model-tree SHA-256 — safely extracted model directory;
+3. ECR digest — exact released container bytes.
+
+Read [Docker build best practices](https://docs.docker.com/build/building/best-practices/)
+for digest pinning, then compare `release/model-release.json` with
+`DEPLOYMENT_PHASE_4.md`.
+
+### OIDC and temporary credentials
+
+GitHub stores no AWS access key. A workflow requests a signed OIDC token; AWS
+validates its audience and repository-specific subject, then returns a
+short-lived role session. Read
+[GitHub: Configuring OIDC in AWS](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)
+beside `.github/workflows/verify-aws-oidc.yml` and the IAM trust policy.
+
+Remember:
+
+```text
+trust policy       who may assume the role
+permission policy  what the assumed role may do
+```
+
+### Least privilege
+
+Read [AWS IAM: grant least privilege](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html),
+[AWS IAM: temporary credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html),
+and the [`AdministratorAccess` policy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AdministratorAccess.html).
+
+`AdministratorAccess` is effectively every action on every resource. It was
+useful for one-time bootstrap but is dangerous on a long-lived pipeline access
+key. The steady-state identities should be:
+
+| Identity | Required permission |
+|---|---|
+| GitHub Actions | Push only to `epex-forecaster` through OIDC |
+| Phase-5 EC2 | Pull only from that repository through an instance role |
+| Offline pipeline user | Only specific data bucket/prefixes still in use |
+
+### Container scanning and remediation
+
+Read [Amazon ECR image scanning](https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html).
+Basic scanning checks OS packages at push time. Enhanced scanning with Amazon
+Inspector can continuously scan OS and language packages.
+
+A scanner finding begins an investigation; severity alone is not the entire
+decision:
+
+1. Confirm the affected package/function exists.
+2. Determine whether attacker-controlled input can reach it.
+3. Check the distribution vendor for a fixed package.
+4. Remove unnecessary packages where possible.
+5. Rebuild, rerun the ML prediction contract and rescan.
+6. If no supported fix exists, document scope, controls and the rebuild trigger.
+
+That process removed curl, reducing the ECR report from six findings—including
+two critical—to two. For the remaining results:
+
+- zlib is required by Python/core Debian packages; the vulnerable native
+  non-blocking `gzwrite` path is unused and Debian has no fixed candidate;
+- `perl-base` is essential, but the reported vulnerable `Pod::Text` module is
+  not installed and the API never invokes Perl.
+
+Neither result was hidden or suppressed. Rebuild and rescan when Debian ships a
+fix. A base-image migration is a separate release change because it must prove
+XGBoost and MLflow deserialization compatibility and reproduce predictions.
+
+## 6. Reproduce the Phase-4 evidence read-only
+
+```bash
+gh run view 35762796347
+
+AWS_PROFILE=admin aws ecr describe-images \
+  --region ap-northeast-1 \
+  --repository-name epex-forecaster \
+  --image-ids imageTag=bundled-8ab83d041327fa912f12a1e1cd4820b874e32f74
+
+AWS_PROFILE=admin aws ecr describe-image-scan-findings \
+  --region ap-northeast-1 \
+  --repository-name epex-forecaster \
+  --image-id imageDigest=sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0
+```
+
+These queries read evidence. They do not deploy the image or approve risk.
+
+## 7. Recommended study order
+
+1. Watch the Full Stack Deep Learning deployment lecture.
+2. Read the AWS Machine Learning Lens lifecycle diagram.
+3. Read the MLflow architecture overview and identify what stays offline.
+4. Study GitHub OIDC, then compare trust and permission policies locally.
+5. Study IAM least privilege and explain why bootstrap admin must be removed.
+6. Read the ECR scanning guide and reproduce the final scan report.
+7. Read the local documents in this order:
+   - `MODEL_RELEASE.md` — model selection and immutable export;
+   - `DEPLOYMENT_PHASES_2_3.md` — bundled image and state-free contract;
+   - `DEPLOYMENT_PHASE_4.md` — OIDC, ECR, digest and scan evidence;
+   - `CI.md` — test and release gates;
+   - `DOCKER.md` — image/runtime responsibilities;
+   - `ROADMAP.md` — implemented versus planned;
+   - `AWS_S3_EC2.md` — broader AWS context and Phase-5 target.
+
+The conceptual resources show mature industry practice. The local documents
+show exactly which subset was selected, why it is smaller, what evidence exists
+today and what has not been built yet.

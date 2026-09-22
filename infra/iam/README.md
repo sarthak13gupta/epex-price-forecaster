@@ -78,6 +78,20 @@ the `sub` condition above. There is nothing to leak and nothing to rotate.
 That is not abstract here: this project's `.env` holds a real access key pair
 for the S3 pipeline user. Keeping it out of CI entirely is the point.
 
+## Bootstrap access is not runtime access
+
+`AdministratorAccess` was temporarily attached to
+`quantitative-pipeline-user` to create the OIDC provider, roles and ECR
+repository. That managed policy allows every action against every resource and
+must not become the steady state of a long-lived access key. Phase 4 no longer
+uses it: GitHub assumes `github-actions-ecr-push` with temporary OIDC
+credentials, and Phase 5 will give EC2 an ECR-pull-only role.
+
+Detach the temporary policy after account-owner approval. Decide separately
+whether the legacy offline pipeline still needs S3; `AmazonS3FullAccess` should
+ultimately be replaced with a bucket/prefix-scoped policy, not copied into the
+serving architecture.
+
 ## `ecr:GetAuthorizationToken` on `"*"`
 
 Not laziness. It is an account-level call with no repository-scoped ARN, so it

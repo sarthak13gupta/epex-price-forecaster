@@ -264,6 +264,13 @@ Linux/amd64, then pushes the already-tested image and records its ECR digest.
 Follow [`DEPLOYMENT_PHASE_4.md`](DEPLOYMENT_PHASE_4.md); do not trigger the
 application tag until the model asset and repository variables exist.
 
+**Current evidence:** manual publish run `35762796347` completed this sequence
+for commit `8ab83d0`. Deploy
+`epex-forecaster@sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0`.
+The ECR scan review removed curl and all critical findings; two currently
+unfixed, unreachable Debian base findings and their rebuild triggers are
+documented in Phase 4 §4.7.
+
 ## 5. Tests and CI
 
 ```bash

@@ -78,6 +78,11 @@ Training and inference are separated for **CPU contention**, not memory. A
 tuning sweep saturates the cores it is given; sharing an instance with the API
 would show up as inference latency rather than as an out-of-memory kill.
 
+The first AWS deployment uses a deliberately smaller serving slice than this
+four-service development topology: the released model is baked into the
+`bundled-serve` API image. It requires no runtime S3, MLflow server, database,
+training process or host model volume.
+
 ### "The model" is six pieces of fitted state
 
 This is the part that most notebook-to-production ports get wrong. The served
@@ -230,14 +235,16 @@ serving image at all**. Details in [`docs/CI.md`](docs/CI.md).
 [`docs/MODEL_RELEASE.md`](docs/MODEL_RELEASE.md) | Phase 1: immutable model candidate and provenance |
 [`docs/DEPLOYMENT_PHASES_2_3.md`](docs/DEPLOYMENT_PHASES_2_3.md) | Bundle the model and prove isolated inference |
 [`docs/DEPLOYMENT_PHASE_4.md`](docs/DEPLOYMENT_PHASE_4.md) | Checksummed release asset, Linux/amd64 validation and ECR publication |
+[`docs/PRODUCTION_ARCHITECTURE_LEARNING.md`](docs/PRODUCTION_ARCHITECTURE_LEARNING.md) | Junior-friendly learning path mapped to the architecture completed so far |
 [`docs/AWS_S3_EC2.md`](docs/AWS_S3_EC2.md) | S3 and EC2 from first principles, with model-interaction diagrams |
 [`docs/MLOPS.md`](docs/MLOPS.md) | Each lifecycle step: generic definition, why, how it is done here |
 [`docs/CORRECTIONS.md`](docs/CORRECTIONS.md) | 17 findings, measured — including where earlier claims were wrong |
 [`docs/ASSESSMENT.md`](docs/ASSESSMENT.md) | How this compares to production time-series systems |
 [`docs/JEPX_MIGRATION.md`](docs/JEPX_MIGRATION.md) | Research toward a Japanese-market port (parked) |
 
-Each is also available as `.docx`, generated from the same Markdown via
-`scripts/md_to_docx.py`.
+Markdown is the authoritative, current documentation. Some guides also have
+generated `.docx` snapshots; regenerate them with `scripts/md_to_docx.py` only
+when a Word deliverable is needed, followed by rendered-page visual QA.
 
 `CORRECTIONS.md` is worth singling out: it records measurements that contradict
 earlier claims in this project's own documentation — that `is_lockdown` is dead
@@ -254,13 +261,13 @@ that survived scrutiny and findings that did not are both in there.
 | FastAPI, Streamlit, Docker | ✅ Built and verified |
 | S3 read + write | ✅ Verified round-trip |
 | Tests + CI | ✅ 53 tests, 3 CI jobs |
-| ECR publish | 🟡 Bundled release flow built and locally validated; external setup/run pending |
+| ECR publish | ✅ Hardened bundled image published; digest and scan review recorded |
 | EC2 deployment | ⬜ Not deployed |
 
-The one-line summary: **the system is complete and tested, but it has never run
-anywhere except one laptop.** Closing that is the top of
-[`docs/ROADMAP.md`](docs/ROADMAP.md), which also lists the four account actions
-everything else waits on.
+The one-line summary: **the verified release exists in Tokyo ECR, but no EC2
+host serves it yet.** Closing that is the top of
+[`docs/ROADMAP.md`](docs/ROADMAP.md), together with removal of temporary
+administrator access and creation of the ECR-pull-only instance role.
 
 ## Security
 
@@ -271,10 +278,9 @@ everything else waits on.
 - IAM policies in `infra/iam/` use `__BUCKET__` / `__ACCOUNT_ID__` placeholders
   substituted at apply time, so no account identifier is committed.
 - CI authenticates to AWS by **OIDC**, not stored keys.
-- A `.env` copied to EC2 must **not** contain `AWS_ACCESS_KEY_ID` — boto3's
-  chain checks environment variables first, so a stray key means the instance
-  role is never reached, and the symptom looks like a broken policy rather than
-  a shadowed credential.
+- The first bundled EC2 deployment needs no S3/model credentials at all. Its
+  instance role will be ECR-pull-only; do not copy local AWS access keys into
+  the container.
 
 ## Origin
 

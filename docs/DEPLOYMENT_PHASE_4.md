@@ -455,8 +455,8 @@ The remaining findings are:
 
 | Finding | Package | Review decision |
 |---|---|---|
-| `CVE-2026-85091` (high) | zlib `1.3.1-1` | Debian has no fixed package yet. The flaw requires the native `gzwrite`/`gzprintf` non-blocking stale-buffer path; the API does not call that path or accept gzip files. Temporarily accepted for this inference-only release; rebuild immediately when Debian publishes a fix. |
-| `CVE-2026-82560` (undefined) | Perl `5.40.1-6+deb13u1` | Requires formatting an attacker-controlled POD document with Pod::Text. The API neither invokes Perl nor accepts POD input. Debian has no fixed package yet. Temporarily accepted and monitored. |
+| `CVE-2026-85091` (high) | zlib `1:1.3.dfsg+really1.3.1-1+b1` | Debian has no fixed package yet. The flaw requires the native `gzwrite`/`gzprintf` non-blocking stale-buffer path; the API does not call that path or accept gzip files. Temporarily accepted for this inference-only release; rebuild immediately when Debian publishes a fix. |
+| `CVE-2026-82560` (undefined) | `perl-base` `5.40.1-6+deb13u1` | Requires formatting an attacker-controlled POD document with Pod::Text. The exact image cannot import `Pod::Text`; that module is absent. The API does not invoke Perl or accept POD input. Debian has no fixed package yet. Temporarily accepted and monitored. |
 
 This is not a claim that the packages are generally safe. It is a
 deployment-specific reachability decision backed by a read-only container,
@@ -467,6 +467,62 @@ currently records both issues as unfixed:
 
 - <https://security-tracker.debian.org/tracker/CVE-2026-85091>
 - <https://security-tracker.debian.org/tracker/CVE-2026-82560>
+
+### Why the remaining findings were not force-fixed
+
+The exact digest was pulled from ECR and inspected, not inferred from the
+Dockerfile:
+
+- `apt-cache policy` reports the installed zlib and Perl versions as the newest
+  candidates in Debian trixie;
+- simulated zlib removal fails because `dpkg`, `apt`, `libssl` and core system
+  packages require it, and Python imports the same zlib 1.3.1 runtime;
+- `perl-base` is marked `Essential: yes`, so forced removal would create an
+  unsupported base system;
+- `perl-modules-5.40` and `Pod::Text` are not installed, making the scanner's
+  source-package match broader than the code actually present.
+
+There are three future remediation paths:
+
+1. **Supported default:** when Debian publishes fixed packages, rebuild the
+   unchanged application, rerun the Phase-3 contract, publish a new digest and
+   review the new scan.
+2. **Base-image migration:** move to another maintained Python 3.12/glibc image
+   only after proving XGBoost, MLflow deserialization, non-root execution and
+   the exact prediction fixture. This is not a drop-in security edit.
+3. **Emergency custom patch:** build and maintain a patched zlib package. This
+   makes this team responsible for an OS library and should be reserved for a
+   reachable, urgent vulnerability when no vendor update exists.
+
+Deleting package metadata to silence ECR, force-removing essential packages,
+or suppressing the findings would change the report—not the risk—and is not an
+acceptable fix.
+
+## 4.8 Temporary administrator access
+
+`quantitative-pipeline-user` still has both `AdministratorAccess` and
+`AmazonS3FullAccess`. The former is especially dangerous because its policy is
+effectively `Action: "*"` and `Resource: "*"`: anyone holding that user's
+long-lived access key could alter IAM, create new credentials, delete ECR/EC2/S3
+resources or grant another principal permanent administrator access.
+
+Phase 4 no longer needs it. GitHub publishes through a short-lived,
+repository-scoped OIDC role. Detach the bootstrap policy after explicit account
+owner approval:
+
+```bash
+AWS_PROFILE=admin aws iam detach-user-policy \
+  --user-name quantitative-pipeline-user \
+  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+
+AWS_PROFILE=admin aws iam list-attached-user-policies \
+  --user-name quantitative-pipeline-user
+```
+
+`AmazonS3FullAccess` is a separate decision. It is unnecessary for the deployed
+bundled API, but the legacy offline data pipeline may still use S3. Replace it
+with a bucket/prefix-scoped policy before detaching it if that offline workflow
+must continue. The Phase-5 EC2 host must receive only ECR pull permissions.
 
 ## Exit criteria
 

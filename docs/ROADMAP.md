@@ -49,14 +49,15 @@ and everything in the next section waits on them.
 
 | # | Action | Why it needs you |
 |---|---|---|
-| B0 | ✅ Configure an **admin** AWS profile | Temporarily satisfied with bootstrap access; remove it after setup |
+| B0 | 🟡 Remove temporary `AdministratorAccess` | Phase-4 bootstrap is complete; long-lived pipeline keys must not remain account administrators |
 | B1 | `sudo ./infra/host/install-docker-engine.sh` | No passwordless sudo here |
 | B2 | ✅ `./infra/iam/apply-github-oidc.sh` | OIDC provider, Tokyo ECR repository and push role created |
 | B3 | ✅ Set three repository variables | Tokyo values set; GitHub role assumption verified |
 | B4 | Add/apply an ECR-pull-only EC2 role | The current `apply.sh` is S3-oriented and does not match the bundled design |
 
-B1 is independent and can be done any time. B0–B3 and image publication are
-complete. The active chain is now **B4 → deploy.**
+B1 is independent and can be done any time. B2–B3 and image publication are
+complete. The active security/deployment chain is now **remove temporary admin
+→ B4 → deploy.**
 
 ### B0. An admin AWS profile
 

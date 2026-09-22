@@ -212,10 +212,10 @@ Phase-4 mechanism is now implemented: a checksummed GitHub Release asset supplie
 the gitignored model, the workflow builds `bundled-serve` for Linux/amd64, runs
 this same isolation contract, and pushes that tested image to ECR through OIDC.
 
-The amd64 candidate passed locally. External publication still requires the
-model asset, AWS OIDC setup, repository variables and a committed release tag.
-See [`DEPLOYMENT_PHASE_4.md`](DEPLOYMENT_PHASE_4.md) for the exact procedure and
-exit criteria.
+The amd64 candidate passed locally, and Phase 4 later repeated this contract on
+a clean GitHub runner before publishing the hardened image to Tokyo ECR. See
+[`DEPLOYMENT_PHASE_4.md`](DEPLOYMENT_PHASE_4.md) for the workflow evidence,
+immutable digest and vulnerability review.
 
 The image still contains the full MLflow package to read the local pyfunc
 bundle. At roughly 288 MB by Docker inspection it is acceptable for the first
