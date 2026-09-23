@@ -875,30 +875,30 @@ The image gets a moving tag (`:bundled`) and a commit-specific one
 (`:bundled-<sha>`). **Pin deployments to the returned ECR digest** — rollback
 then means selecting the previous verified digest without rebuilding it.
 
-### ⬜ 6. Deploy (half a day)
+### ✅ 6. Deploy the private inference slice
 
-Instance, Docker, compose, Nginx, security group (443 open, 22 to your IP only),
-Elastic IP. Bake the model into the image so MLflow is not needed at boot.
+Completed 2026-09-23. Instance `i-0290d8f3733e43a43` is a `t3.micro` running
+Amazon Linux 2023 x86_64 in `ap-northeast-1a`. It uses an ECR-pull-only
+instance role, an empty-ingress security group, IMDSv2, encrypted gp3 storage
+and the exact Phase-4 digest. The bundled FastAPI container returned both
+healthy model state and a real forecast. See `DEPLOYMENT_PHASE_5.md`.
 
-⚠️ **Free-tier warning.** The 12-month free tier is `t2.micro`/`t3.micro` with
-**1 GiB RAM** — not enough for three containers plus a training run. Either
-train locally and deploy only the API and UI, or accept roughly $60/month for a
-`t3.large`.
+This is deliberately smaller than the full topology described earlier in this
+guide: no S3, MLflow server, database, Streamlit or training process runs on the
+host. FastAPI is bound to `127.0.0.1:8000`; public HTTPS is the next boundary.
+
+`t3.micro` has 1 GiB RAM, which is suitable for trying this single API—not for
+the full development stack or training. Do not assume free-tier eligibility.
 
 ### ⬜ 7. Lifecycle rules (15 min, once the archive grows)
 
 Standard-IA at 90 days, Glacier Instant at one year, on `raw/` and `forecasts/`.
 Pointless at today's ~100 KB; worth it once a daily forecast archive accumulates.
 
-### Cost for all of it
+### Cost boundary
 
-| Item | Monthly |
-|---|---|
-| `t3.large` on-demand, running 24/7 | ~$60 |
-| 30 GiB `gp3` EBS | ~$2.40 |
-| S3 storage and requests at this volume | < $1 |
-| Elastic IP (attached) | $0 |
-| **Total** | **~$65** |
-
-Stop the instance when not in use and it drops to a couple of dollars. Worth
-knowing the number: "I designed for AWS" is a stronger claim when you can cost it.
+The active Phase-5 resources that can incur charges are the `t3.micro`, its
+12 GiB gp3 root volume, public IPv4 and data transfer. Prices and free-tier
+eligibility change, so use the current AWS bill or Pricing Calculator instead
+of treating an old monthly estimate as a contract. Terminating the instance via
+`infra/ec2/terminate-inference.sh` also deletes its root volume.

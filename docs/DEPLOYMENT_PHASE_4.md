@@ -535,7 +535,9 @@ Phase 4 exit evidence:
 - recorded ECR digest matches `aws ecr describe-images` — **complete**;
 - ECR scan findings reviewed and residual risk recorded — **complete**.
 
-The correct status is **Phase 4 complete; digest-pinned EC2 deployment is next**.
+At the time this phase completed, the correct status was **Phase 4 complete;
+digest-pinned EC2 deployment next**. Phase 5 subsequently deployed this exact
+digest and recorded health/prediction evidence in `DEPLOYMENT_PHASE_5.md`.
 
 ## Deployment phases left to implement
 

@@ -396,13 +396,15 @@ because `NaiveForecaster` is defined there — so a `Baseline_Seasonal` champion
   symlink into `/mnt/wsl/docker-desktop/cli-tools/`, so the CLI vanishes when
   Desktop stops rather than failing to connect. `infra/host/install-docker-engine.sh`
   installs a native engine managed by systemd; it needs a `sudo` run.
-- **Nothing pulls an image onto a host yet.** `publish.yml` pushes to ECR; the
-  delivery half is unbuilt. See `ROADMAP.md`.
+- **Host delivery is now proven, but still manual.** Phase 5 launched one Tokyo
+  EC2 host, pulled the exact ECR digest and recorded health/prediction evidence.
+  A workflow-triggered redeploy/rollback path remains open. See `ROADMAP.md`.
 - **The bundled target is published.** Phase 4 supplies its gitignored model
   through a double-checksummed GitHub Release asset, reran the networkless,
   read-only contract on Linux/amd64, and published the hardened result to Tokyo
-  ECR. Deploy digest `sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0`.
-  Nothing pulls it onto a host yet. See `DEPLOYMENT_PHASE_4.md`.
+  ECR. Deployed digest `sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0`
+  now runs on the private Phase-5 host. See `DEPLOYMENT_PHASE_4.md` and
+  `DEPLOYMENT_PHASE_5.md`.
 
 ---
 
@@ -453,23 +455,19 @@ docker builder prune                    # drop the build cache
 
 ## 9. The path to EC2
 
-Docker is what makes the deployment in `AWS_S3_EC2.md` Part 5 step 6 a short
-job rather than an afternoon of SSH:
+The first EC2 deployment deliberately uses only the bundled API image:
 
 ```
-1. launch t3.large, Amazon Linux
-2. install docker + compose plugin        (via user-data, so it is reproducible)
-3. attach an IAM role                      s3:GetObject / s3:PutObject, one bucket
-4. clone the repo, set ENV=production
-       ▲ artifact_location becomes s3:// — no volume mount, no uid mapping
-5. docker compose up -d api mlflow
-6. Nginx in front: :443 public, proxy to 127.0.0.1:8000 and :8501
-7. security group: 443 from anywhere, 22 from your IP only
+1. create an ECR-pull-only role + instance profile
+2. launch t3.micro with current Amazon Linux 2023 x86_64
+3. user-data installs Docker and pulls image@sha256:...
+4. run the non-root container read-only with no mounts
+5. bind API to 127.0.0.1:8000; security-group ingress remains empty
+6. prove /health and /predict from inside the container
 ```
 
-**Two cautions carried over.** The 12-month free tier is `t2.micro`/`t3.micro`
-with **1 GiB RAM** — not enough for three containers plus a training run; either
-train locally and deploy only the API, or pay roughly $60/month for a
-`t3.large`. And **bake the model into the image** (or cache it on EBS) so MLflow
-is not a boot dependency: a running API survives MLflow being down, but a
-*restarting* one does not.
+That path is implemented in `infra/ec2/` and evidenced in
+`DEPLOYMENT_PHASE_5.md`. `t3.micro` has only 1 GiB RAM, so it is for the single
+API—not the development Compose stack or training. EC2, EBS and public IPv4 can
+be billable; free-tier eligibility is never assumed. The broader S3/MLflow/UI
+topology remains an optional later architecture, not a dependency of this host.

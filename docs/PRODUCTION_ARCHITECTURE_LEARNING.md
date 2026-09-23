@@ -6,12 +6,12 @@ operational reasoning rather than copying code.
 
 The broader repository contains training, optional S3 integration and local
 MLflow. The first production deployment is deliberately smaller: an immutable
-model is bundled with FastAPI, verified as a self-contained container, and
-published by GitHub Actions to Amazon ECR. EC2 automation is prepared. The
-deployed service needs no S3, MLflow server, database, training process or host
-model disk.
+model is bundled with FastAPI, verified as a self-contained container,
+published by GitHub Actions to Amazon ECR, and now running privately on EC2.
+The deployed service needs no S3, MLflow server, database, training process or
+host model disk.
 
-## Current checkpoint — Phase 5 prepared, AWS permission pending
+## Current checkpoint — Phase 5 complete
 
 ```text
 MLflow model v1 (offline source)
@@ -20,8 +20,9 @@ MLflow model v1 (offline source)
   → networkless/read-only prediction contract
   → GitHub OIDC exchanges for temporary AWS credentials
   → ECR push + immutable digest + vulnerability scan
-  → ECR-pull-only EC2 role + digest-pinned host (automation ready)
-  → AWS provisioning preflight blocked by missing EC2/IAM permission
+  → ECR-pull-only EC2 role
+  → digest-pinned private EC2 host in Tokyo
+  → healthy model load + real prediction evidence
 ```
 
 The published image identity is:
@@ -58,7 +59,7 @@ It covers the ideas that matter here:
 | Packaged model | `PriceForecaster` bundle copied to `/app/model` |
 | Deployment container | Docker `bundled-serve` target |
 | Container registry | Amazon ECR in Tokyo |
-| Docker host | Amazon EC2 — Phase-5 automation prepared, host not yet created |
+| Docker host | Amazon EC2 — Phase 5 running privately in Tokyo |
 | Runtime dependencies | XGBoost, scikit-learn, cascade code and pinned Python packages |
 | Model rollout | New model release → tested image → ECR digest |
 | Runtime model/data store | None; the model is inside the image |
@@ -80,7 +81,7 @@ Data → prepare → train → evaluate → register → release → serve
   └──────────── monitor → approve → retrain ──────────────┘
 ```
 
-This project is now between image release and initial host deployment:
+This project has completed image release and initial private host deployment:
 
 | Lifecycle component | Current implementation |
 |---|---|
@@ -88,10 +89,22 @@ This project is now between image release and initial host deployment:
 | Experiment tracking/registry | Local MLflow; source of model v1 |
 | Deployment artifact transport | Checksummed GitHub Release asset |
 | Container repository | ECR — published |
-| Production endpoint | FastAPI on EC2 — provisioning permission pending |
+| Production endpoint | FastAPI on EC2 loopback — healthy; public HTTPS not added |
 | Image CI/release | GitHub Actions — complete through ECR |
 | Release lineage | Model hashes + Git SHA + workflow evidence + ECR digest |
 | Monitoring/retraining | Planned, not implemented |
+
+### The claim this evidence supports
+
+It is accurate to say **the core AWS inference deployment and the MLflow-backed
+model-release path are complete**. More precisely: MLflow tracked/registered
+model v1 offline; the approved artifact was exported into an immutable image;
+GitHub OIDC published it to ECR; and EC2 pulled and served its exact digest.
+
+It is not yet accurate to call this a fully operated public production service.
+FastAPI is already deployed and working, but public HTTPS, monitoring/alerts,
+automated delivery/rollback and Streamlit hosting remain outside Phase 5. An
+MLflow server is absent intentionally—it is not a serving dependency.
 
 ## 3. Where MLflow belongs—and where it does not
 
@@ -124,9 +137,10 @@ Release       build → verify → scan → publish immutable image
 Delivery      pull chosen digest → restart → validate → rollback if needed
 ```
 
-This repository completes the release pipeline through ECR and now contains the
-EC2 delivery automation. The AWS resources are not yet created because the
-configured profile failed the first read-only EC2 permission check.
+This repository completes the release pipeline through ECR and the first
+private EC2 delivery. Instance `i-0290d8f3733e43a43` pulled the fixed digest,
+loaded the bundled model and returned the Phase-3 reference prediction. The
+next boundary is safe public HTTPS, not another model-serving mechanism.
 
 ## 5. Phase-5 concepts to understand
 
@@ -149,10 +163,10 @@ then compare `apply-ec2-ecr-pull.sh`, `trust-policy-ec2.json` and
 
 ### Booted is not deployed
 
-EC2 user data installs Docker and starts the fixed digest on first boot. The
-acceptance marker is written only after the container becomes healthy and a
-real prediction succeeds. Read [AWS: EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html),
-then follow `user-data.sh` from ECR login to `PHASE5_OK`.
+EC2 user data installed Docker and started the fixed digest on first boot. The
+acceptance marker was written only after the container became healthy and a
+real prediction succeeded. Read [AWS: EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html),
+then follow `user-data.sh` from ECR login to the recorded `PHASE5_OK` evidence.
 
 ### Layered network controls
 

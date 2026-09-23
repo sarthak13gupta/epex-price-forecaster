@@ -28,7 +28,7 @@ Companion to `DESIGN.md` (architecture), `INTERNALS.md` (code walkthrough),
 | 7 | Evaluation & release gating | 🟡 Partial | Walk-forward + leaderboard; **no gate** |
 | 8 | Model packaging | 🟢 Built | `mlflow.pyfunc` + `code_paths` |
 | 9 | Model registry & promotion | 🟡 Partial | Registry v1; **no aliases, no promotion rule** |
-| 10 | Serving | 🟢 Built | FastAPI (4 endpoints) + Streamlit (3 tabs), both containerised |
+| 10 | Serving | 🟢 Built + privately deployed | FastAPI on digest-pinned EC2; Streamlit remains local |
 | 11 | Monitoring & drift | 🔴 Absent | — |
 | 12 | Continuous training | 🔴 Absent | Manual invocation only |
 | 13 | CI/CD | 🟢 Built | 53 tests; GitHub Actions: secret scan, 2 dependency sets, image smoke |
@@ -711,8 +711,9 @@ runs the isolated prediction contract, and only then authenticates by **OIDC**
 to push that same tested image to ECR. It records the authoritative ECR digest
 in release evidence. This path passed remotely in run `35762796347`; the
 hardened image, digest and vulnerability review are recorded in
-`DEPLOYMENT_PHASE_4.md`. The remaining delivery half is unchanged—nothing yet
-pulls the digest onto a host.
+`DEPLOYMENT_PHASE_4.md`. Phase 5 then pulled that exact digest onto a private
+Tokyo EC2 host and recorded health plus prediction evidence. Delivery is still
+manually initiated; workflow-driven redeployment and rollback remain future work.
 
 **On AWS / future.**
 
@@ -720,8 +721,8 @@ pulls the digest onto a host.
   the champion candidate is not better than the incumbent by a
   Diebold-Mariano-significant margin. The DM machinery already exists; it is not
   yet wired into the pipeline.
-- **Delivery**: an SSM Run Command or CodeDeploy step that pulls the new
-  `-<sha>` tag on the EC2 host and restarts the compose stack.
+- **Automated delivery**: an SSM Run Command or CodeDeploy step that pulls a
+  reviewed digest on the EC2 host and restarts/validates the service.
 - **`ruff` and `mypy` jobs** — cheap, and the codebase is already annotated.
 - **A scheduled smoke run** of `--skip-tuning --skip-shap --no-register` against
   a data sample, which would catch pipeline rot that unit tests cannot.

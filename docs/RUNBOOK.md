@@ -271,6 +271,37 @@ The ECR scan review removed curl and all critical findings; two currently
 unfixed, unreachable Debian base findings and their rebuild triggers are
 documented in Phase 4 §4.7.
 
+### Deploy the digest-pinned API to private EC2
+
+Phase 5 uses a separate runtime role because the bundled API needs ECR pull,
+not S3 or MLflow access:
+
+```bash
+export AWS_PROFILE=admin
+export AWS_DEFAULT_REGION=ap-northeast-1
+
+./infra/iam/apply-ec2-ecr-pull.sh
+
+IMAGE_DIGEST=sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0 \
+  ./infra/ec2/launch-inference.sh
+
+./infra/ec2/describe-inference.sh i-0290d8f3733e43a43
+```
+
+The launch is complete only when console evidence contains
+`DEPLOYED_REFERENCE`, a healthy model response, a prediction response and
+`PHASE5_OK`. The deployed instance is `i-0290d8f3733e43a43`; it has no inbound
+security-group rules, so this phase proves serving without exposing a public
+endpoint. Full evidence is in [`DEPLOYMENT_PHASE_5.md`](DEPLOYMENT_PHASE_5.md).
+
+When the learning host is no longer required:
+
+```bash
+./infra/ec2/terminate-inference.sh i-0290d8f3733e43a43 terminate
+```
+
+Do not terminate it while the next HTTPS/operations phase is in progress.
+
 ## 5. Tests and CI
 
 ```bash

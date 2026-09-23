@@ -263,12 +263,13 @@ that survived scrutiny and findings that did not are both in there.
 | S3 read + write | ✅ Verified round-trip |
 | Tests + CI | ✅ 53 tests, 3 CI jobs |
 | ECR publish | ✅ Hardened bundled image published; digest and scan review recorded |
-| EC2 deployment | 🟡 Automation ready; AWS provisioning permission pending |
+| EC2 deployment | ✅ Private digest-pinned API running in Tokyo; no public ingress |
 
-The one-line summary: **the verified release exists in Tokyo ECR and the private
-EC2 deployment path is ready, but no host serves it yet because the configured
-CLI identity lacks Phase-5 provisioning permission.** The exact manual step and
-evidence contract are in [`docs/DEPLOYMENT_PHASE_5.md`](docs/DEPLOYMENT_PHASE_5.md).
+The one-line summary: **the verified release now runs on a private-by-default
+Tokyo EC2 host from its exact ECR digest and has returned a real prediction.**
+There is deliberately no public endpoint yet. The resource IDs, evidence,
+costs and cleanup steps are in
+[`docs/DEPLOYMENT_PHASE_5.md`](docs/DEPLOYMENT_PHASE_5.md).
 
 ## Security
 
@@ -280,8 +281,8 @@ evidence contract are in [`docs/DEPLOYMENT_PHASE_5.md`](docs/DEPLOYMENT_PHASE_5.
   time; deployment evidence documents the real account/resource identifiers.
 - CI authenticates to AWS by **OIDC**, not stored keys.
 - The first bundled EC2 deployment needs no S3/model credentials at all. Its
-  prepared instance role is ECR-pull-only; do not copy local AWS access keys
-  into the container.
+  deployed instance role is ECR-pull-only; no local AWS access key was copied
+  into the instance or container.
 
 ## Origin
 

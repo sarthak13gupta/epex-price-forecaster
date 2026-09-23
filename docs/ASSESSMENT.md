@@ -183,9 +183,10 @@ right first call: FastAPI (4 endpoints), Streamlit (3 tabs) and three Docker
 image targets are all built and verified. It is the difference between "notebook
 with good hygiene" and "system".
 
-What remains of this item is host delivery: the hardened Linux/amd64 image has
-passed on a clean GitHub runner and is published to Tokyo ECR, but no EC2 host
-serves its digest yet. See `ROADMAP.md` §D.
+Host delivery is now complete for the private serving slice: the hardened
+Linux/amd64 image was pulled by digest onto a Tokyo `t3.micro`, loaded the
+bundled model and reproduced a real forecast. Public HTTPS and monitoring are
+still absent. See `DEPLOYMENT_PHASE_5.md` and `ROADMAP.md` §D.
 
 **2. Kill `year` by replacing what it proxies.**
 

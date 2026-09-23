@@ -34,13 +34,13 @@ Last reviewed: **2026-09-23**.
 | Tests | ✅ 53, ~2 s |
 | CI | ✅ 3 jobs on every push |
 | Image publish (ECR) | ✅ Hardened bundled image published; digest and scan review recorded |
-| **Deployment to EC2** | 🟡 Automation ready; provisioning permission pending |
+| **Deployment to EC2** | ✅ Private digest-pinned inference running in Tokyo |
 | Monitoring / drift | ⬜ Not started |
 | Continuous training | ⬜ Not started |
 
-The honest one-line summary: **the release image exists in ECR and passed a
-clean-runner contract, but no EC2 host serves it yet.** That gap is now the top
-of this list.
+The honest one-line summary: **the release image now runs successfully on EC2,
+but only as a private loopback-bound service.** A controlled HTTPS request path
+and basic monitoring are now the top deployment gaps.
 
 ## Blocked on you, not on effort
 
@@ -53,12 +53,12 @@ and everything in the next section waits on them.
 | B1 | `sudo ./infra/host/install-docker-engine.sh` | No passwordless sudo here |
 | B2 | ✅ `./infra/iam/apply-github-oidc.sh` | OIDC provider, Tokyo ECR repository and push role created |
 | B3 | ✅ Set three repository variables | Tokyo values set; GitHub role assumption verified |
-| B4 | 🟡 Apply the prepared ECR-pull-only EC2 role | Automation exists; current CLI identity lacks IAM/EC2 provisioning permission |
+| B4 | ✅ Apply the ECR-pull-only EC2 role | Role/profile created and used by the live host |
 
-B1 is independent and can be done any time. B2–B3 and image publication are
-complete. The temporary admin policy was removed. The active deployment chain
-is now **grant narrow Phase-5 bootstrap permission → B4 → deploy → remove that
-bootstrap permission.**
+B1 is independent and can be done any time. B2–B4, image publication and the
+private deployment are complete. The active security action is now **remove
+the temporary `Phase5ProvisionerTemporary` inline policy**; the EC2 runtime role
+continues working independently.
 
 ### B0. An admin AWS profile
 
@@ -166,10 +166,11 @@ always builds an S3 policy and must not be used for this deployment. Phase 5
 now has a separate idempotent `apply-ec2-ecr-pull.sh` path that creates the
 EC2 role/profile and substitutes the Tokyo repository ARN.
 
-**2026-09-23 preflight:** no resources were created. The configured profile was
-denied on `ec2:DescribeVpcs` and IAM-policy inspection. Grant the temporary,
-narrow policy in `policy-phase5-provisioner.json` through a separate privileged
-console identity, complete the documented deployment, then remove it.
+**Complete 2026-09-23:** the initial permission denial was resolved with the
+narrow `Phase5ProvisionerTemporary` policy. The role/profile and no-ingress
+host were created, and the digest-pinned container returned health and
+prediction evidence. Remove that human provisioner policy now; it is not the
+instance's runtime permission.
 
 ## Next: finish the deployment story
 
@@ -201,7 +202,7 @@ The initial scan's avoidable curl findings were removed; the two remaining
 unfixed and unreachable base-OS findings are reviewed in
 `DEPLOYMENT_PHASE_4.md`.
 
-### D2. Deploy inference-only to EC2
+### ✅ D2. Deploy inference-only to EC2
 
 The decision already taken: **inference only for now**, with the architecture
 left able to train on EC2 later. Train locally, register, deploy the artifact.
@@ -224,22 +225,39 @@ Implemented Phase-5 steps:
 three services or a training run. EC2, EBS and public IPv4 can all be billable;
 the design does not rely on free-tier eligibility.
 
-### D3. Capture evidence, then tear down
+### ✅ D3. Capture evidence; tear down when the learning host is finished
 
 The point of deploying is the evidence, not merely the EC2 state. Capture the
 console-recorded image identity, `/health` and `/predict` responses, plus the
 role, security group and IMDS configuration. Streamlit is not in this first
 serving slice.
 
-`infra/ec2/terminate-inference.sh` exists and requires both the exact instance
-ID and a confirmation word. Use it when the learning host is no longer needed;
-its encrypted root volume is deleted with the instance.
+Evidence was captured from instance `i-0290d8f3733e43a43`; see
+`DEPLOYMENT_PHASE_5.md`. The instance remains running for the next phase.
+`infra/ec2/terminate-inference.sh` requires both its exact ID and a confirmation
+word, and deletes the encrypted root volume with the instance.
 
-### D4. Close the delivery loop
+### D4. Add a controlled request path and basic operations
 
-`publish.yml` pushes; nothing pulls. An SSM Run Command step — or a
-`docker compose pull && up -d` triggered by the workflow — is what makes this
-CD rather than "CI plus a manual step".
+Not required to prove EC2 inference, but required before calling the service a
+publicly operated production endpoint:
+
+1. Add TLS on port 443 through a reviewed reverse proxy or load balancer.
+2. Keep FastAPI bound to loopback; never expose port 8000 directly.
+3. Choose DNS/certificate ownership and a narrowly scoped ingress policy.
+4. Add basic uptime, latency, error-rate and disk/memory alerts.
+5. Define rollback to the previous recorded ECR digest.
+
+Streamlit can remain local or be added later; it is not required for the model
+serving contract. The MLflow server must also remain private/offline unless a
+separate authenticated control plane is deliberately designed.
+
+### D5. Close the automated delivery loop
+
+`publish.yml` pushes and the Phase-5 launch script pulls, but the two are joined
+by a human selecting a reviewed digest. An SSM Run Command, CodeDeploy step or
+equivalent authenticated delivery mechanism is what would make this CD rather
+than “CI plus a documented manual deployment.”
 
 ## Then: the modelling work that changes the numbers
 
@@ -350,9 +368,9 @@ Not gaps. Decisions.
 
 A useful stopping point, so this does not expand forever:
 
-1. **B1–B4** cleared.
-2. **D1–D3**: an image in ECR, a deployed instance, evidence captured, torn down
-   cleanly.
+1. **B2–B4** cleared; B1 is only a local-host convenience.
+2. **D1–D3**: an image in ECR, a deployed instance and evidence captured. Tear
+   it down cleanly after the HTTPS/operations learning phase.
 3. **M1**: `year` replaced, with before-and-after numbers.
 4. **M2**: quantile forecasts, with coverage reported.
 
@@ -360,5 +378,6 @@ That set turns "a well-engineered notebook port" into "a deployed system with a
 diagnosed and fixed modelling flaw and honest uncertainty" — which is a
 different claim, and the one worth making.
 
-Everything below that line is optional polish. **D1–D3 alone would close the
-only gap between what this project is and what it says it is.**
+Everything below that line is optional polish. **D1–D3 now support the claim
+that the core AWS inference deployment is complete.** They do not imply a
+public, monitored, automatically rolled-out production service.

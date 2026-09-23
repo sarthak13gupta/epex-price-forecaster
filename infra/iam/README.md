@@ -94,6 +94,12 @@ whether the legacy offline pipeline still needs S3; `AmazonS3FullAccess` should
 ultimately be replaced with a bucket/prefix-scoped policy, not copied into the
 serving architecture.
 
+Phase 5 used the narrower inline policy `Phase5ProvisionerTemporary` instead of
+restoring `AdministratorAccess`. Its provisioning work completed on 2026-09-23;
+remove it from `quantitative-pipeline-user` now. The live instance does not use
+that user policy—it uses `epex-forecaster-ec2-role`, whose only policy is
+repository-scoped ECR pull.
+
 ## `ecr:GetAuthorizationToken` on `"*"`
 
 Not laziness. It is an account-level call with no repository-scoped ARN, so it

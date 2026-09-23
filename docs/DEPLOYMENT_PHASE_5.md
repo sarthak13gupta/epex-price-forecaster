@@ -10,16 +10,25 @@ Last updated: **2026-09-23**.
 
 ## Status
 
-**Automation ready; AWS provisioning blocked at the permission preflight.**
+**Complete on 2026-09-23.** The private inference host is running and the exact
+Phase-4 image digest returned both a healthy model response and a real
+three-day forecast. No public request path has been opened.
 
-No EC2 instance, security group, instance role or instance profile was created
-on 2026-09-23. `AWS_PROFILE=admin` still resolves to
-`arn:aws:iam::955519187689:user/quantitative-pipeline-user`, but that identity
-is no longer allowed to call `ec2:DescribeVpcs` or inspect its IAM policies.
-This is consistent with the temporary `AdministratorAccess` policy having been
-removed after Phase 4. Removing it was the correct steady-state action; Phase 5
-now needs a short-lived bootstrap permission set or a separate administrator
-identity.
+| Resource | Deployed value |
+|---|---|
+| AWS account / region | `955519187689` / `ap-northeast-1` |
+| Instance | `i-0290d8f3733e43a43`, `t3.micro`, running |
+| Availability Zone | `ap-northeast-1a` |
+| AMI | `ami-06380d26ad7176f2c` — `al2023-ami-2023.12.20260918.0-kernel-6.18-x86_64` |
+| Security group | `sg-0a663d88dbd652394`, empty ingress |
+| Instance role | `epex-forecaster-ec2-role` |
+| Instance profile | `epex-forecaster-ec2-profile` |
+| Root volume | `vol-0df8bdf56a33a7c47`, encrypted 12 GiB gp3, delete on termination |
+| Public IPv4 | `43.207.203.38` for outbound bootstrap; no inbound access |
+| Container image ID | `sha256:cbc80bbc44b8b6e3d755fb3998ebeedfb19be023f79cbc33bf847ef3778eaf1e` |
+
+The AWS timestamps in the evidence are UTC (`2026-09-22 19:24–19:26`), which
+is `2026-09-23 00:54–00:56` in Asia/Kolkata.
 
 The repository contains the complete, syntax-checked deployment path:
 
@@ -91,19 +100,21 @@ model is not supplied through an independently managed host path or persistent
 data volume. The model remains part of the immutable image, and deleting the
 instance deletes its root volume.
 
-## Manual permission step
+## Bootstrap permission history and required cleanup
 
-Use a separate bootstrap administrator if available. Otherwise, from an AWS
-root/administrator console session, attach a temporary inline policy to the
-CLI identity using `infra/iam/policy-phase5-provisioner.json`, replacing
-`__ACCOUNT_ID__` with `955519187689`. The policy grants only the IAM, EC2 and
-public AMI-parameter actions used by these scripts. Remove it after the live
-evidence is captured.
+The first read-only preflight failed because the configured CLI user could not
+call `ec2:DescribeVpcs`. Through a privileged AWS Console session, the account
+owner attached `policy-phase5-provisioner.json` as the inline policy
+`Phase5ProvisionerTemporary` to `quantitative-pipeline-user`. This was enough to
+create and inspect the named IAM/EC2 resources without restoring broad
+`AdministratorAccess`.
 
-Temporarily reattaching AWS `AdministratorAccess` would also unblock the work,
-but it is substantially broader and is not required by the design.
+**Manual action now required:** remove `Phase5ProvisionerTemporary` from
+`quantitative-pipeline-user`. It has finished its job and includes control-plane
+permissions such as `ec2:RunInstances` and `ec2:TerminateInstances`. Removing
+it does not affect the running instance: EC2 uses its separate instance role.
 
-## Commands to complete after permission is granted
+## Reproduction commands
 
 ```bash
 cd /Users/sarthakgupta/GENAI/epex-price-forecaster
@@ -116,7 +127,7 @@ export AWS_DEFAULT_REGION=ap-northeast-1
 IMAGE_DIGEST=sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0 \
   ./infra/ec2/launch-inference.sh
 
-./infra/ec2/describe-inference.sh i-REPLACE_AFTER_LAUNCH
+./infra/ec2/describe-inference.sh i-0290d8f3733e43a43
 ```
 
 IAM changes can take a few seconds to propagate. The instance bootstrap can
@@ -131,9 +142,42 @@ PREDICTION_RESPONSE {"model_name":...}
 PHASE5_OK ...
 ```
 
-After that, verify the role has only the `ecr-pull` inline policy, the security
-group has an empty ingress list, IMDS reports `required`, and the instance tag
-contains the approved image digest.
+## Recorded acceptance evidence
+
+The instance reached both EC2 status checks `ok`. Its AMI owner is the Amazon
+Linux owner `137112412989`, architecture is `x86_64`, IMDSv2 is required, and
+the security group has no ingress entries. The role inspection returned one
+inline policy named `ecr-pull` and no attached managed policies.
+
+Cloud-init recorded:
+
+```text
+health attempt 6: healthy
+DEPLOYED_REFERENCE 955519187689.dkr.ecr.ap-northeast-1.amazonaws.com/epex-forecaster@sha256:2e65ee5f6ce3d26d9bec3ed6e02852278a570c9bb09a37dfaf1838971be126c0
+IMAGE_IDENTITY sha256:cbc80bbc44b8b6e3d755fb3998ebeedfb19be023f79cbc33bf847ef3778eaf1e
+HEALTH_RESPONSE {"status":"ok","model_loaded":true,"model_uri":"/app/model","detail":null}
+PHASE5_OK 2026-09-22T19:26:49Z
+```
+
+The prediction check returned model `XGBoost`, training end `2020-06-30`, and
+the expected three prices:
+
+```text
+2020-07-01  34.68523989365982
+2020-07-02  35.20491425207375
+2020-07-03  34.94565669127315
+mean        34.94527027900224
+```
+
+This proves more than a running VM: the instance role authenticated to ECR,
+Docker pulled the approved bytes, the bundled model deserialized, and the
+inference cascade completed on the target Linux/amd64 host.
+
+One final control-plane evidence query, `ecr:DescribeImages`, was denied to the
+human CLI identity because the temporary provisioner policy deliberately does
+not include ECR read access. This did not affect deployment: Phase 4 already
+recorded the repository digest, and the EC2 console evidence records the exact
+same `repository@digest` reference after a successful role-authenticated pull.
 
 ## Cost and teardown
 
@@ -146,10 +190,11 @@ The public IPv4 address is used only for outbound package/ECR access in the
 default public subnet. It does not make the API reachable because the security
 group permits no inbound traffic and Docker binds the service to loopback.
 
-To stop all Phase-5 compute/storage charges after collecting evidence:
+The instance is deliberately still running for the next phase. To stop all
+Phase-5 compute/storage charges when it is no longer needed:
 
 ```bash
-./infra/ec2/terminate-inference.sh i-EXACT_INSTANCE_ID terminate
+./infra/ec2/terminate-inference.sh i-0290d8f3733e43a43 terminate
 ```
 
 The script checks the instance's `Name` tag before termination. The root volume
@@ -169,3 +214,10 @@ Read these in order and map each concept back to the table above:
 The most important operational distinction is: an instance being `running`
 only proves that a VM booted. A healthy, digest-pinned prediction response is
 the evidence that the ML deployment worked.
+
+## Next boundary
+
+Phase 5 proves private serving. It does not yet provide a user-facing endpoint,
+TLS, DNS, load balancing, monitoring, automated redeployment or rollback. The
+next deployment phase should add a deliberately controlled HTTPS request path
+without exposing port 8000, SSH, MLflow or Docker directly.

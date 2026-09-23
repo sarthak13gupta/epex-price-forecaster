@@ -42,7 +42,7 @@ suite and pipelines in `CI.md`. **`RUNBOOK.md` is how to run all of it**, and
 | **Test suite** | ✅ **Built** — 53 tests, ~2 s, no data or credentials needed | **`CI.md`** |
 | **CI (GitHub Actions)** | ✅ **Built** — tests on two dependency sets, image build + container smoke | **`CI.md`** |
 | **Image publish to ECR** | ✅ Hardened bundled image published; digest and scan review recorded | `DEPLOYMENT_PHASE_4.md` |
-| EC2 deployment | ⬜ Not deployed | `AWS_S3_EC2.md` Part 5 |
+| EC2 deployment | ✅ Private digest-pinned API running in Tokyo | `DEPLOYMENT_PHASE_5.md` |
 
 ---
 
