@@ -238,6 +238,7 @@ serving image at all**. Details in [`docs/CI.md`](docs/CI.md).
 [`docs/DEPLOYMENT_PHASE_5.md`](docs/DEPLOYMENT_PHASE_5.md) | Private EC2 host design, automation, security controls and live status |
 [`docs/PRODUCTION_ARCHITECTURE_LEARNING.md`](docs/PRODUCTION_ARCHITECTURE_LEARNING.md) | Top-down architecture book: system story → flows → AWS/IAM → runtime → interviews |
 [`docs/AWS_S3_EC2.md`](docs/AWS_S3_EC2.md) | S3 and EC2 from first principles, with model-interaction diagrams |
+[`docs/MLFLOW_ARCHITECTURE.md`](docs/MLFLOW_ARCHITECTURE.md) | MLflow tracking, registry, packaging, stores and deployment boundary |
 [`docs/MLOPS.md`](docs/MLOPS.md) | Each lifecycle step: generic definition, why, how it is done here |
 [`docs/CORRECTIONS.md`](docs/CORRECTIONS.md) | 17 findings, measured — including where earlier claims were wrong |
 [`docs/ASSESSMENT.md`](docs/ASSESSMENT.md) | How this compares to production time-series systems |
