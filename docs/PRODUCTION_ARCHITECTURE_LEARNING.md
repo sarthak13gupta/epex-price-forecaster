@@ -178,26 +178,69 @@ The supported claim is:
 This flow happens when model/code changes are ready to become a deployable
 version. It is not part of an online prediction request.
 
+### Chronological order: start to finish
+
+Think of this as two connected releases:
+
+1. **Model release:** training output becomes an immutable, checksummed model
+   archive in a GitHub Release.
+2. **Application release:** GitHub Actions combines that model with inference
+   code and dependencies, verifies the result, and publishes a container image
+   to ECR.
+
+The complete order is:
+
+| Order | Where | Action | Result / hand-off |
+|---:|---|---|---|
+| 1 | Local development | Finish and test the training and inference code. Commit the source before the final training run where practical, so MLflow can associate the run with a Git commit. | Reproducible source version |
+| 2 | Local training process | Run training and walk-forward evaluation. | Fitted price model, fitted exogenous cascade, fitted target transformer and evaluation metrics |
+| 3 | Local MLflow | Log parameters, metrics, code/model artifacts and run lineage. Register the chosen run as a numbered model version. | `models:/french_spot_price_forecaster/<numeric-version>` |
+| 4 | Human release decision | Compare candidate metrics and checks. Choose one exact numeric model version; do not use a moving alias such as `@champion` as release input. | Approved release candidate identity |
+| 5 | Local release tooling | Run `scripts/prepare_model_release.py`. It downloads the registered version, exports the complete MLflow bundle, loads it in a fresh process and checks known predictions. | Gitignored version-specific model directory plus `release-manifest.json` |
+| 6 | Local packaging | Create a deterministic `.tar.gz` with `scripts/model_release_archive.py`. Calculate the archive checksum and extracted model-tree checksum. | Immutable model archive and two SHA-256 identities |
+| 7 | Local Git repository | Record the model version, paths, GitHub Release identity and both checksums in `release/model-release.json`. Commit the release tooling, application code and descriptor. **Do not commit the model binary.** | Reviewable release definition in Git |
+| 8 | GitHub repository | Push that commit to GitHub and let normal CI test the source and container definitions. | GitHub contains the code and release descriptor that the clean release runner will check out |
+| 9 | GitHub Release | Create the version-specific GitHub Release and upload the `.tar.gz` as its asset. Never silently overwrite an existing model asset; changed bytes require a new version/release identity. | Clean runners can download the approved binary without S3 or Git LFS |
+| 10 | GitHub Actions | Trigger `.github/workflows/publish.yml` manually, or through an application tag matching `v*`. The model tag named in the descriptor is an asset location; it does not itself match this workflow's `v*` trigger. | Release workflow starts from a clean runner |
+| 11 | GitHub Actions | Check out the pushed code, validate the descriptor, download the named GitHub Release asset and verify both checksums before extraction. | Proven correspondence between descriptor and model bytes |
+| 12 | GitHub Actions / Docker | Build the `linux/amd64` `bundled-serve` image containing the model at `/app/model`. | One candidate image containing code, dependencies and model |
+| 13 | GitHub Actions / Docker | Start that exact image under the Phase-3 restrictions; verify health, model identity and known predictions. Do not rebuild after testing. | Tested release candidate |
+| 14 | GitHub Actions / AWS STS | Use GitHub OIDC to assume the narrowly scoped ECR push role. No long-lived AWS access key is stored in GitHub. | Temporary AWS credentials |
+| 15 | GitHub Actions / ECR | Tag and push the already-tested image to the Tokyo ECR repository. Read back its repository digest. ECR scans it on push. | Immutable deployable image digest |
+| 16 | GitHub Actions | Save `release-evidence.json`, linking model version and checksums to Git commit, workflow run, platform and ECR digest. | Auditable end-to-end release record |
+
+For the current release, steps 1–6 happened locally, step 8 pushed only source
+and metadata, step 9 transported the binary model, and steps 10–16 ran on a
+GitHub-hosted runner. **GitHub Actions publishes to ECR; it does not copy the
+image directly onto EC2.** EC2 pulling and starting that digest belongs to Flow
+B.
+
 ```mermaid
 sequenceDiagram
     participant DS as Data scientist
     participant Train as Training pipeline
     participant MF as Local MLflow
     participant Export as Release tooling
+    participant Git as GitHub repository
     participant GR as GitHub Release
     participant GA as GitHub Actions
     participant ECR as Amazon ECR
 
+    DS->>Git: Commit reproducible training/inference source
     DS->>Train: Train and walk-forward evaluate
     Train->>MF: Log runs, metrics and complete model bundle
-    DS->>MF: Select registered model version 1
+    DS->>MF: Select exact numeric registered version
     MF-->>Export: Load exact registered artifact
-    Export->>GR: Upload deterministic checksummed asset
+    Export->>Export: Fresh-process test, archive and checksum
+    DS->>Git: Push code and model-release descriptor
+    Export->>GR: Upload archive as versioned release asset
     DS->>GA: Trigger release workflow
+    GA->>Git: Check out exact source and descriptor
     GA->>GR: Download and verify model asset
     GA->>GA: Build Linux/amd64 bundled image
     GA->>GA: Run health and prediction contract
-    GA->>ECR: Assume OIDC role and push image
+    GA->>GA: Assume AWS role through GitHub OIDC
+    GA->>ECR: Push the same tested image
     ECR->>ECR: Scan image on push
     ECR-->>GA: Return immutable repository digest
 ```
